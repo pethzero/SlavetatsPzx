@@ -1,41 +1,46 @@
-## If you want to create a mod based on this project you should:
+# SlavetatsPzx
 
-Modify CMakeLists.txt with your name and the name of your mod
-```cmake
-set(AUTHOR_NAME "AuthorName")
-set(PRODUCT_NAME "SlavetatsPzx")
-set(BEAUTIFUL_NAME "SlavetatsPzx")
+SlaveTats as a C++/SKSE plugin, with an in-game menu built on [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3).
+
+Based on [SlaveTatsNG](https://github.com/nopse0/SlaveTatsNG) by nopse0 (Apache-2.0). The tattoo logic, JContainers data and Papyrus API are SlaveTatsNG's; this fork adds the menu.
+
+## What's different from SlaveTatsNG
+
+* In-game menu (section **SlavetatsPzx** in SKSE Menu Framework) with Setup, Body, Head, Hand and Foot pages: pick section/pattern, ink, glow and glossy per overlay slot, then Save / Replace / Remove. Targets can be the player or the actor selected in the console.
+* The menu uses the same SlaveTats data as the MCM (`.SlaveTats.applied`, `add_and_get_tattoo`, `synchronize_tattoos`), so both stay in sync.
+* `blankTextureName` in the ini is read without its quotes.
+* Output is `SlavetatsPzx.dll`. It **replaces** `SlaveTatsNG.dll`; don't install both, or the plugin loads twice.
+* Config files stay in `Data/SKSE/Plugins/SlaveTatsNG/` (`SlaveTatsNG.ini`, `skee_addresses.json`).
+
+## User requirements
+
+* [Address Library for SKSE](https://www.nexusmods.com/skyrimspecialedition/mods/32444) (SE/AE) or [VR Address Library](https://www.nexusmods.com/skyrimspecialedition/mods/58101) (VR)
+* JContainers
+* RaceMenu (SKEE)
+* SKSE Menu Framework (only needed for the in-game menu)
+
+## Building
+
+Requirements:
+
+* Visual Studio 2022 or newer with "Desktop development with C++"
+* [vcpkg](https://github.com/microsoft/vcpkg), with the `VCPKG_ROOT` environment variable set (defaults to `C:\vcpkg`)
+
+CommonLibSSE-NG and the other dependencies come from the vcpkg manifest (`vcpkg.json`, `vcpkg-configuration.json`).
+
+```
+build.bat                                      # release -> build\release-msvc\SlavetatsPzx.dll
+build.bat debug                                # debug   -> build\debug-msvc
+build.bat release "D:\MO2\mods\SlavetatsPzx"   # also copy DLL + config into a mod folder
 ```
 
-Delete the LICENCE file and use git to create the licence you want your mod to be
-<img width="572" height="292" alt="image" src="https://github.com/user-attachments/assets/80cd698b-a4ac-499d-9de3-07d261682604" />
-<img width="499" height="182" alt="image" src="https://github.com/user-attachments/assets/2cb7e4c8-edd6-4b24-91d8-074d2701c951" />
+`build.ps1` takes the same options (`-Preset`, `-Clean`, `-OutputDir`).
 
-Update the cmake/version.rc.in with your licence (This licence will go into the dll)
+## Links
 
-## Environment variables
+* [SlaveTatsNG](https://github.com/nopse0/SlaveTatsNG) / [LoversLab page](https://www.loverslab.com/files/file/35989-slavetatsng/)
+* [VMTHook](https://github.com/gfreivasc/VMTHook)
 
-[How to set up envioriment variables](https://gist.github.com/Thiago099/b45ec7832fb754325b29a61006bcd10c)
+## License
 
-COMMONLIB_SSE_FOLDER
-
-Clone this Repository, to somewhere safe and adds its path to this environment variable on Windows.
-
-```bash
-git clone --recursive https://github.com/alandtse/CommonLibVR
-cd CommonLibVR
-git checkout ng
-```
-  
-## Optional ouput folder optional variables
-
-- SKYRIM_FOLDER
-- WILDLANDER_OWRT_FOLDER
-- SKYRIM_OWRT_FOLDER
-- SKYRIM_MODS_FOLDER2
-- SKYRIM_MODS_FOLDER
-
-
-## Description of the new features
-
-https://github.com/QTR-Modding/SKSE-Menu-Framework-3/blob/master/README.md
+[Apache-2.0](LICENSE), same as SlaveTatsNG.

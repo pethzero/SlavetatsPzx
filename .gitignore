@@ -6,6 +6,7 @@
 
 # Build output
 build
+dist
 install
 out
 cmake-build*
@@ -14,10 +15,5 @@ compile_commands.json
 # vcpkg
 vcpkg_installed
 
-# Locally downloaded dependencies (see build.ps1)
-deps
-
-# imgui extras not used by the build
-imgui/examples
-imgui/docs
-imgui/.github
+# Compiled Papyrus
+papyrus/Scripts/*.pex

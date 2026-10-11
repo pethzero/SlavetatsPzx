@@ -10,4 +10,5 @@ vcpkg_from_github(
 # Install codes
 set(CLIBUTIL_SOURCE	${SOURCE_PATH}/include/ClibUtil)
 file(INSTALL ${CLIBUTIL_SOURCE} DESTINATION ${CURRENT_PACKAGES_DIR}/include)
+
 vcpkg_install_copyright(FILE_LIST "${SOURCE_PATH}/LICENSE")

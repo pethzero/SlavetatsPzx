@@ -1,0 +1,957 @@
+#include "jcontainers_wrapper.h"
+#include "constants.h"
+#include "skse64_native_papyrus.h"
+#include "primary_api.h"
+#include "query.h"
+#include "tattoo.h"
+#include "tattoo_magic.h"
+#include "ni_node_override_lock.h"
+#include "logging.h"
+#include "config.h"
+#include "threading.h"
+#include <future>
+
+#include "overlays.h"
+
+using namespace slavetats_ng::skee_wrapper;
+using namespace slavetats_ng::jcwrapper;
+namespace StringUtil = skse64_native_papyrus;
+using std::string;
+using std::to_string;
+
+namespace slavetats_ng
+{
+	fail_t clear_overlay(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		RE::BSFixedString nodeName = string(a_area) + " [Ovl" + to_string(a_slot) + "]";
+		RE::BSFixedString blankPrefix = slavetats_ng::config::Config::GetSingleton()->blank_texture_name;
+
+		// logger::info("blank_texture_name = {}", blankPrefix);
+		// logger::info("Applying {} to node {}", blankPrefix, nodeName);
+
+		NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 0, blankPrefix.c_str(), true);
+		
+		bool hasBumpOverride = NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 1);
+		if (hasBumpOverride)
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 1, blankPrefix.c_str(), true);
+
+		bool hasGlowOverride = NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 3);
+		if (hasGlowOverride)
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 3, blankPrefix.c_str(), true);
+
+		NiOverride::ApplyNodeOverrides(a_target);
+
+		if (hasGlowOverride)
+			NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 3);
+
+		if (hasBumpOverride)
+			NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 0);
+	
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 7, -1);
+		
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 0, -1);
+		
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 1, -1);
+		
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 8, -1);
+		
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 2, -1);
+		
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 3, -1);
+
+		logger::info("Cleared {}", nodeName.c_str());
+
+		return false;
+	}
+
+	fail_t clear_overlay_part1(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		RE::BSFixedString nodeName = string(a_area) + " [Ovl" + to_string(a_slot) + "]";
+		RE::BSFixedString blankPrefix = slavetats_ng::config::Config::GetSingleton()->blank_texture_name;
+
+		// logger::info("clear_overlay_part1: blank_texture_name = {}", blankPrefix);
+		// logger::info("Applying {} to node {}", blankPrefix, nodeName);
+		
+		NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 0, blankPrefix.c_str(), true);
+
+		bool hasBumpOverride = NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 1);
+		if (hasBumpOverride)
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 1, blankPrefix.c_str(), true);
+
+		bool hasGlowOverride = NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 3);
+		if (hasGlowOverride)
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 3, blankPrefix.c_str(), true);
+
+		NiOverride::AddNodeOverrideFloat(a_target, a_is_female, nodeName.c_str(), 8, -1, 0.f, true);
+
+		return false;
+	}
+
+	fail_t clear_overlay_part2(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		RE::BSFixedString nodeName = string(a_area) + " [Ovl" + to_string(a_slot) + "]";
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 3);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 0);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 7, -1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 0, -1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 1, -1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 8, -1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 2, -1);
+
+		NiOverride::RemoveNodeOverride(a_target, a_is_female, nodeName.c_str(), 3, -1);
+
+		logger::info("Cleared {}", nodeName.c_str());
+
+		return false;
+	}
+
+	fail_t apply_overlay_ex_deferred(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot, RE::BSFixedString a_diffuse_map, int a_diffuse_color,
+		int a_emissive_color, float a_glossiness, RE::BSFixedString a_bump_map, float a_alpha, float a_specular_strength, RE::BSFixedString a_glow_map, float a_emissive_mult)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		const auto& blank_texture = slavetats_ng::config::Config::GetSingleton()->blank_texture_name;
+
+		RE::BSFixedString nodeName = string(a_area) + " [Ovl" + to_string(a_slot) + "]";
+		NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 0, a_diffuse_map.c_str(), true);
+		if (!a_bump_map.empty())
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 1, a_bump_map.c_str(), true);
+		else {
+			// Note: This doesn't remove the node override, it only sets it to the blank texture, but this should be no problem, I think
+			if (NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 1))
+				NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 1, blank_texture.c_str(), true);
+		}
+		if (!a_glow_map.empty())
+			NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 3, a_glow_map.c_str(), true);
+		else {
+			if (NiOverride::HasNodeOverride(a_target, a_is_female, nodeName.c_str(), 9, 3))
+				NiOverride::AddNodeOverrideString(a_target, a_is_female, nodeName.c_str(), 9, 3, blank_texture.c_str(), true);
+		}
+		NiOverride::AddNodeOverrideInt(a_target, a_is_female, nodeName.c_str(), 7, -1, a_diffuse_color, true);
+		NiOverride::AddNodeOverrideInt(a_target, a_is_female, nodeName.c_str(), 0, -1, a_emissive_color, true);
+		NiOverride::AddNodeOverrideFloat(a_target, a_is_female, nodeName.c_str(), 1, -1, a_emissive_mult, true);
+		NiOverride::AddNodeOverrideFloat(a_target, a_is_female, nodeName.c_str(), 8, -1, a_alpha, true);
+		NiOverride::AddNodeOverrideFloat(a_target, a_is_female, nodeName.c_str(), 2, -1, a_glossiness, true);
+		NiOverride::AddNodeOverrideFloat(a_target, a_is_female, nodeName.c_str(), 3, -1, a_specular_strength, true);
+
+		logger::info("Applied {} = {}:{}:{}:{}", nodeName.c_str(), a_diffuse_map.c_str(), a_diffuse_color, a_emissive_color, a_glossiness);
+
+		return false;
+
+	}
+
+	fail_t apply_overlay_ex(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot, RE::BSFixedString a_diffuse_map, int a_diffuse_color,
+		int a_emissive_color, float a_glossiness, RE::BSFixedString a_bump_map, float a_alpha, float a_specular_strength, RE::BSFixedString a_glow_map, float a_emissive_mult)
+	{
+		fail_t error = apply_overlay_ex_deferred(a_target, a_is_female, a_area, a_slot, a_diffuse_map, a_diffuse_color, a_emissive_color, a_glossiness, a_bump_map, a_alpha, a_specular_strength,
+			a_glow_map, a_diffuse_color);
+		if (!error)
+			NiOverride::ApplyNodeOverrides(a_target);
+		return error;
+	}
+
+	fail_t apply_overlay(RE::Actor* a_target, bool a_is_female, RE::BSFixedString a_area, int a_slot, RE::BSFixedString a_path, int a_color,
+		int a_glow, bool a_gloss, RE::BSFixedString a_bump, float a_alpha)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		float glossiness, specular_strength;
+		if (a_gloss) {
+			glossiness = 5.0f;
+			specular_strength = 5.0f;
+		} else {
+			glossiness = 0.0f;
+			specular_strength = 0.0f;
+		}
+			
+		return apply_overlay_ex(a_target, a_is_female, a_area, a_slot, a_path, a_color, a_glow, glossiness, a_bump, a_alpha, specular_strength, "", 1.0f);
+	}
+
+	fail_t upgrade_tattoos_2_0_0(RE::Actor* a_target)
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		RE::BSFixedString actor_version = JFormDB::getStr(a_target, ".SlaveTats.version");
+		RE::BSFixedString code_version = VERSION();
+
+		if (actor_version == code_version)
+			return false;
+
+		// 1.0.0 -> 2.0.0
+		if (actor_version == "1.0.0") {
+			actor_version = "2.0.0";
+
+			int tattoos = JFormDB::getObj(a_target, ".SlaveTats.applied");
+			int i = JArray::count(tattoos);
+			while (i > 0) {
+				i -= 1;
+
+				// Convert the old boolean "gloss" field to "glossiness" and "specularStrength" (the actual NiOverride node overrides)
+				int gloss = JMap::getInt(i, "gloss", -1);
+				if (gloss >= 0) {
+					// JMap::removeKey(i, "gloss");  // decided to keep it in
+					JMap::setFlt(i, "glossiness", gloss != 0 ? 5.0f : 0.0f);
+					JMap::setFlt(i, "specularStrength", gloss != 0 ? 5.0f : 0.0f);
+				}
+			}
+
+			JFormDB::setStr(a_target, ".SlaveTats.version", actor_version);
+			JFormDB::setInt(a_target, ".SlaveTats.updated", 1);
+		}
+
+		return false;
+	}
+	
+	fail_t upgrade_tattoos(RE::Actor* a_target) 
+	{
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		RE::BSFixedString actor_version = JFormDB::getStr(a_target, ".SlaveTats.version");
+		RE::BSFixedString code_version = VERSION();
+
+		if (actor_version == code_version)
+			return false;
+
+		RE::BSFixedString path;
+		int    i;
+		int    a_template;
+		int    matches;
+		int    entry;
+
+		RE::BSFixedString prefix = PREFIX();
+		int    prefix_len = (int)prefix.length();
+
+		if (actor_version == "") {
+			JFormDB::setObj(a_target, ".SlaveTats.applied", JArray::object());
+			actor_version = "1.0.0";
+
+			bool isFemale = a_target->GetActorBase()->GetSex() == 1;
+
+			a_template = JValue::addToPool(JMap::object(), "SlaveTats-upgrade_tattoos");
+			matches = JValue::addToPool(JArray::object(), "SlaveTats-upgrade_tattoos");
+
+			RE::BSFixedString area = "Body"; 
+			i = SLOTS(area);
+			while (i > 0) {
+				i -= 1;
+
+				RE::BSFixedString nodeName = string(area) + " [Ovl" + to_string(i) + "]";
+				path = NiOverride::GetNodeOverrideString(a_target, isFemale, nodeName.c_str(), 9, 0);
+				if (StringUtil::SubString(path, 0, prefix_len) == prefix.c_str()) {
+					JMap::setStr(a_template, "texture", RE::BSFixedString("*" + string(path).substr(prefix_len)));
+					JArray::clear(matches);
+					query_available_tattoos(a_template, matches);
+					if (JArray::count(matches)) {
+						entry = JArray::getObj(matches, 0);
+						JMap::setInt(entry, "color", NiOverride::GetNodeOverrideInt(a_target, isFemale, nodeName.c_str(), 7, -1));
+						JMap::setInt(entry, "glow", NiOverride::GetNodeOverrideInt(a_target, isFemale, nodeName.c_str(), 0, -1));
+						if (NiOverride::GetNodeOverrideFloat(a_target, isFemale, nodeName.c_str(), 2, -1) > 0.0) {
+							JMap::setInt(entry, "gloss", 1);
+						}
+						_add_and_get_tattoo(a_target, entry, i, true, false);
+					} else {
+						// Log no matching entry found
+					}
+				}
+			}
+			// Why no color, glow and gloss for Face, Hands, Feet ??? Is this a bug ? TODO  
+			area = "Face";
+			i = SLOTS(area);
+			while (i > 0) {
+				i -= 1;
+
+				RE::BSFixedString nodeName = string(area) + " [Ovl" + to_string(i) + "]";
+				path = NiOverride::GetNodeOverrideString(a_target, isFemale, nodeName.c_str(), 9, 0);
+				if (StringUtil::SubString(path, 0, prefix_len) == prefix.c_str()) {
+					JMap::setStr(a_template, "texture", RE::BSFixedString("*" + string(path).substr(prefix_len)));
+					JArray::clear(matches);
+					query_available_tattoos(a_template, matches);
+					if (JArray::count(matches)) {
+						entry = JArray::getObj(matches, 0);
+						_add_and_get_tattoo(a_target, entry, i, true, false);
+					} else {
+						// Log no matching entry found
+					}
+				}
+			}
+			area = "Hands";
+			i = SLOTS(area);
+			while (i > 0) {
+				i -= 1;
+
+				RE::BSFixedString nodeName = string(area) + " [Ovl" + to_string(i) + "]";
+				path = NiOverride::GetNodeOverrideString(a_target, isFemale, nodeName.c_str(), 9, 0);
+				if (StringUtil::SubString(path, 0, prefix_len) == prefix.c_str()) {
+					JMap::setStr(a_template, "texture", RE::BSFixedString("*" + string(path).substr(prefix_len)));
+					JArray::clear(matches);
+					query_available_tattoos(a_template, matches);
+					if (JArray::count(matches)) {
+						entry = JArray::getObj(matches, 0);
+						_add_and_get_tattoo(a_target, entry, i, true, false);
+					} else {
+						// Log no matching entry found
+					}
+				}
+			}
+			area = "Feet";
+			i = SLOTS(area);
+			while (i > 0) {
+				i -= 1;
+
+				RE::BSFixedString nodeName = string(area) + " [Ovl" + to_string(i) + "]";
+				path = NiOverride::GetNodeOverrideString(a_target, isFemale, nodeName.c_str(), 9, 0);
+				if (StringUtil::SubString(path, 0, prefix_len) == prefix.c_str()) {
+					JMap::setStr(a_template, "texture", RE::BSFixedString("*" + string(path).substr(prefix_len)));
+					JArray::clear(matches);
+					query_available_tattoos(a_template, matches);
+					if (JArray::count(matches)) {
+						entry = JArray::getObj(matches, 0);
+						_add_and_get_tattoo(a_target, entry, i, true, false);
+					} else {
+						// Log no matching entry found
+					}
+				}
+			}
+
+			JFormDB::setStr(a_target, ".SlaveTats.version", actor_version);
+			JFormDB::setInt(a_target, ".SlaveTats.updated", 1);
+		}
+
+		JValue::cleanPool("SlaveTats-upgrade_tattoos");
+
+		return upgrade_tattoos_2_0_0(a_target);
+	}
+
+	fail_t synchronize_tattoos_internal(RE::Actor* a_target, bool a_silent)
+	{
+		int               i;
+		int               idx;
+		int               entry;
+		RE::BSFixedString area;
+		int               slot;
+		RE::BSFixedString path;
+		int               color;
+		int               glow;
+		float             glossiness;
+		float             specular_strength;
+		RE::BSFixedString bump;
+		RE::BSFixedString glow_map;
+		float             alpha;
+		float             emissive_mult;
+
+		logger::info("synchronize_tattoos_internal: a_target = {}", (void*)a_target);
+
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		if (!a_target->Is3DLoaded()) {
+			logger::info("a_target->Is3DLoaded == false, aborting synchronize_tattoos, a_target = {}", (void*)a_target);
+			return true;
+		}
+
+		logger::info("synchronize_tattoos_internal: current thread id = {}", slavetats_ng::threading::thread_id_to_string(std::this_thread::get_id()));
+		logger::info("main thread id = {}", slavetats_ng::threading::thread_id_to_string(slavetats_ng::threading::System::GetSingleton()->main_thread_id()));
+
+		// std::this_thread::sleep_for(100ms);
+
+		RE::TESNPC* actor_base = a_target->GetActorBase();
+		if (!actor_base) {
+			logger::info("actor_base is null");
+			return true;
+		}
+
+		// Don't forget to release lock !!!
+		fail_t lockFailed = ni_node_override_lock::lock(a_target);
+		if (lockFailed) {
+			logger::info("could not get ni_node_override_lock");
+			return true;
+		}
+
+		{
+			auto _ = gsl::finally([a_target] { ni_node_override_lock::unlock(a_target); });
+
+			RE::BSFixedString actor_name = actor_base->GetName();
+			bool              isFemale = actor_base->GetSex() == 1;
+			logger::info("SlaveTats: Beginning synchronization for {}", actor_name.c_str());
+
+			if (!NiOverride::HasOverlays(a_target)) {
+				NiOverride::AddOverlays(a_target);
+				// TODO delay ?
+				if (!NiOverride::HasOverlays(a_target)) {
+					logger::error("AddOverlays failed");
+					return true;
+				}
+			}
+
+			if (upgrade_tattoos(a_target)) {
+				logger::error("upgrade_tattoos failed");
+				return true;
+			}
+
+			if (JFormDB::getInt(a_target, ".SlaveTats.updated") == 0) {
+				logger::info("According to JFormDB, nothing ´has changed. Cancelling synchronization.");
+				return false;
+			}
+
+			// TODO notification, disable player controls
+			// if (!a_silent) {
+			//
+			//}
+
+			RE::BSFixedString prefix = PREFIX();
+
+			int on_body = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int on_face = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int on_hands = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int on_feet = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+
+			int external_on_body = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int external_on_face = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int external_on_hands = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int external_on_feet = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+
+			int  applied = JFormDB::getObj(a_target, ".SlaveTats.applied");
+			bool loop = true;
+
+			while (loop) {
+				loop = false;
+
+				i = JArray::count(applied);
+				while (i > 0) {
+					i -= 1;
+
+					if (find_required_tattoo(applied, JArray::getObj(applied, i)) < 0) {
+						remove_tattoos(a_target, JArray::getObj(applied, i), true, a_silent);
+						loop = true;
+					}
+				}
+			}
+
+			if (get_applied_tattoos_by_area(a_target, on_body, on_face, on_hands, on_feet)) {
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return true;
+			}
+
+			if (external_slots(a_target, "Body", external_on_body)) {
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return true;
+			}
+
+			if (external_slots(a_target, "Face", external_on_face)) {
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return true;
+			}
+
+			if (external_slots(a_target, "Hands", external_on_hands)) {
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return true;
+			}
+
+			if (external_slots(a_target, "Feet", external_on_feet)) {
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return true;
+			}
+
+			int on_body_count = JArray::count(on_body);
+			int on_face_count = JArray::count(on_face);
+			int on_hands_count = JArray::count(on_hands);
+			int on_feet_count = JArray::count(on_feet);
+
+			int external_on_body_count = JArray::count(external_on_body);
+			int external_on_face_count = JArray::count(external_on_face);
+			int external_on_hands_count = JArray::count(external_on_hands);
+			int external_on_feet_count = JArray::count(external_on_feet);
+
+			if (on_body_count + on_face_count + on_hands_count + on_feet_count == 0) {
+				deactivate_all_tattoo_magic(a_target);
+
+				i = SLOTS("Body");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_body, i) == -1) {
+						clear_overlay_part1(a_target, isFemale, "Body", i);
+					}
+				}
+
+				i = SLOTS("Face");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_face, i) == -1) {
+						clear_overlay_part1(a_target, isFemale, "Face", i);
+					}
+				}
+
+				i = SLOTS("Hands");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_hands, i) == -1) {
+						clear_overlay_part1(a_target, isFemale, "Hands", i);
+					}
+				}
+
+				i = SLOTS("Feet");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_feet, i) == -1) {
+						clear_overlay_part1(a_target, isFemale, "Feet", i);
+					}
+				}
+
+				NiOverride::ApplyNodeOverrides(a_target);
+
+				i = SLOTS("Body");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_body, i) == -1) {
+						clear_overlay_part2(a_target, isFemale, "Body", i);
+					}
+				}
+
+				i = SLOTS("Face");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_face, i) == -1) {
+						clear_overlay_part2(a_target, isFemale, "Face", i);
+					}
+				}
+
+				i = SLOTS("Hands");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_hands, i) == -1) {
+						clear_overlay_part2(a_target, isFemale, "Hands", i);
+					}
+				}
+
+				i = SLOTS("Feet");
+				while (i > 0) {
+					i -= 1;
+
+					if (JArray::findInt(external_on_feet, i) == -1) {
+						clear_overlay_part2(a_target, isFemale, "Feet", i);
+					}
+				}
+
+				NiOverride::ApplyNodeOverrides(a_target);
+
+				if (external_on_body_count + external_on_face_count + external_on_hands_count + external_on_feet_count == 0) {
+					NiOverride::RemoveOverlays(a_target);
+					// TODO Utility.Wait(0.01)
+
+					// TODO test if GetIsPlayerOwner works
+					if (NiOverride::HasOverlays(a_target) && !actor_base->GetIsPlayerOwner()) {
+						logger::error("NPC overlay uninstallation failed");
+						if (!a_silent) {
+							// TODO Enable player controls
+						}
+						JValue::cleanPool("SlaveTats-synchronize_tattoos");
+						return true;
+					}
+				}
+
+				JFormDB::setEntry("SlaveTats", a_target, 0);
+
+				logger::info("SlaveTats is done with {}", actor_name.c_str());
+
+				if (!a_silent) {
+					// TODO Enable player controls
+				}
+				JValue::cleanPool("SlaveTats-synchronize_tattoos");
+				return false;
+			}
+
+			int empty_body_slots = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int empty_face_slots = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int empty_hands_slots = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int empty_feet_slots = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+
+			i = SLOTS("Body");
+			while (i > 0) {
+				i -= 1;
+				JArray::addInt(empty_body_slots, i);
+			}
+
+			i = SLOTS("Face");
+			while (i > 0) {
+				i -= 1;
+				JArray::addInt(empty_face_slots, i);
+			}
+
+			i = SLOTS("Hands");
+			while (i > 0) {
+				i -= 1;
+				JArray::addInt(empty_hands_slots, i);
+			}
+
+			i = SLOTS("Feet");
+			while (i > 0) {
+				i -= 1;
+				JArray::addInt(empty_feet_slots, i);
+			}
+
+			int to_deactivate = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+			int to_activate = JValue::addToPool(JArray::object(), "SlaveTats-synchronize_tattoos");
+
+			int activated = JFormDB::getObj(a_target, ".SlaveTats.activated");
+			if (activated) {
+				JArray::addFromArray(to_deactivate, activated);
+			}
+
+			i = on_body_count;
+			while (i > 0) {
+				i -= 1;
+
+				entry = JArray::getObj(on_body, i);
+				if (is_tattoo(entry)) {
+					slot = JMap::getInt(entry, "slot");
+					path = string(prefix) + string(JMap::getStr(entry, "texture"));
+					color = JMap::getInt(entry, "color");
+					glow = JMap::getInt(entry, "glow");
+					glossiness = JMap::getFlt(entry, "glossiness");
+					specular_strength = JMap::getFlt(entry, "specularStrength"); 
+					bump = JMap::getStr(entry, "bump");
+					glow_map = JMap::getStr(entry, "glowTexture");
+					alpha = 1.0f - JMap::getFlt(entry, "invertedAlpha");
+					emissive_mult = JMap::getFlt(entry, "emissiveMult", 1.0f);
+					if (!bump.empty())
+						bump = string(prefix) + string(bump);
+					if (!glow_map.empty())
+						glow_map = string(prefix) + string(glow_map);
+					if (JArray::findInt(external_on_body, slot) < 0) {
+						if (!apply_overlay_ex_deferred(a_target, isFemale, "Body", slot, path, color, glow, glossiness, bump, alpha, specular_strength, glow_map, emissive_mult)) {
+							JArray::addObj(to_activate, entry);
+							idx = JArray::findInt(empty_body_slots, slot);
+							if (idx >= 0) {
+								JArray::eraseIndex(empty_body_slots, idx);
+							}
+						}
+					}
+				}
+			}
+
+			i = on_face_count;
+			while (i > 0) {
+				i -= 1;
+
+				entry = JArray::getObj(on_face, i);
+				if (is_tattoo(entry)) {
+					slot = JMap::getInt(entry, "slot");
+					path = string(prefix) + string(JMap::getStr(entry, "texture"));
+					color = JMap::getInt(entry, "color");
+					glow = JMap::getInt(entry, "glow");
+					glossiness = JMap::getFlt(entry, "glossiness");
+					specular_strength = JMap::getFlt(entry, "specularStrength");
+					bump = JMap::getStr(entry, "bump");
+					glow_map = JMap::getStr(entry, "glowTexture");
+					alpha = 1.0f - JMap::getFlt(entry, "invertedAlpha");
+					emissive_mult = JMap::getFlt(entry, "emissiveMult", 1.0f);
+					if (JArray::findInt(external_on_face, slot) < 0) {
+						if (!apply_overlay_ex_deferred(a_target, isFemale, "Face", slot, path, color, glow, glossiness, bump, alpha, specular_strength, glow_map, emissive_mult)) {
+							JArray::addObj(to_activate, entry);
+							idx = JArray::findInt(empty_face_slots, slot);
+							if (idx >= 0) {
+								JArray::eraseIndex(empty_face_slots, idx);
+							}
+						}
+					}
+				}
+			}
+
+			i = on_hands_count;
+			while (i > 0) {
+				i -= 1;
+
+				entry = JArray::getObj(on_hands, i);
+				if (is_tattoo(entry)) {
+					slot = JMap::getInt(entry, "slot");
+					path = string(prefix) + string(JMap::getStr(entry, "texture"));
+					color = JMap::getInt(entry, "color");
+					glow = JMap::getInt(entry, "glow");
+					glossiness = JMap::getFlt(entry, "glossiness");
+					specular_strength = JMap::getFlt(entry, "specularStrength");
+					bump = JMap::getStr(entry, "bump");
+					glow_map = JMap::getStr(entry, "glowTexture");
+					alpha = 1.0f - JMap::getFlt(entry, "invertedAlpha");
+					emissive_mult = JMap::getFlt(entry, "emissiveMult", 1.0f);
+					if (JArray::findInt(external_on_hands, slot) < 0) {
+						if (!apply_overlay_ex_deferred(a_target, isFemale, "Hands", slot, path, color, glow, glossiness, bump, alpha, specular_strength, glow_map, emissive_mult)) {
+							JArray::addObj(to_activate, entry);
+							idx = JArray::findInt(empty_hands_slots, slot);
+							if (idx >= 0) {
+								JArray::eraseIndex(empty_hands_slots, idx);
+							}
+						}
+					}
+				}
+			}
+
+			i = on_feet_count;
+			while (i > 0) {
+				i -= 1;
+				entry = JArray::getObj(on_feet, i);
+				if (is_tattoo(entry)) {
+					slot = JMap::getInt(entry, "slot");
+					path = string(prefix) + string(JMap::getStr(entry, "texture"));
+					color = JMap::getInt(entry, "color");
+					glow = JMap::getInt(entry, "glow");
+					glossiness = JMap::getFlt(entry, "glossiness");
+					specular_strength = JMap::getFlt(entry, "specularStrength");
+					bump = JMap::getStr(entry, "bump");
+					glow_map = JMap::getStr(entry, "glowTexture");
+					alpha = 1.0f - JMap::getFlt(entry, "invertedAlpha");
+					emissive_mult = JMap::getFlt(entry, "emissiveMult", 1.0f);
+					if (JArray::findInt(external_on_feet, slot) < 0) {
+						if (!apply_overlay_ex_deferred(a_target, isFemale, "Feet", slot, path, color, glow, glossiness, bump, alpha, specular_strength, glow_map, emissive_mult)) {
+							JArray::addObj(to_activate, entry);
+							idx = JArray::findInt(empty_feet_slots, slot);
+							if (idx >= 0) {
+								JArray::eraseIndex(empty_feet_slots, idx);
+							}
+						}
+					}
+				}
+			}
+
+			i = JArray::count(empty_body_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_body_slots, i);
+				if (JArray::findInt(external_on_body, slot) < 0) {
+					clear_overlay_part1(a_target, isFemale, "Body", slot);
+				}
+			}
+
+			i = JArray::count(empty_face_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_face_slots, i);
+				if (JArray::findInt(external_on_face, slot) < 0) {
+					clear_overlay_part1(a_target, isFemale, "Face", slot);
+				}
+			}
+
+			i = JArray::count(empty_hands_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_hands_slots, i);
+				if (JArray::findInt(external_on_hands, slot) < 0) {
+					clear_overlay_part1(a_target, isFemale, "Hands", slot);
+				}
+			}
+
+			i = JArray::count(empty_feet_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_feet_slots, i);
+				if (JArray::findInt(external_on_feet, slot) < 0) {
+					clear_overlay_part1(a_target, isFemale, "Feet", slot);
+				}
+			}
+
+			NiOverride::ApplyNodeOverrides(a_target);
+
+			i = JArray::count(empty_body_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_body_slots, i);
+				if (JArray::findInt(external_on_body, slot) < 0) {
+					clear_overlay_part2(a_target, isFemale, "Body", slot);
+				}
+			}
+
+			i = JArray::count(empty_face_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_face_slots, i);
+				if (JArray::findInt(external_on_face, slot) < 0) {
+					clear_overlay_part2(a_target, isFemale, "Face", slot);
+				}
+			}
+
+			i = JArray::count(empty_hands_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_hands_slots, i);
+				if (JArray::findInt(external_on_hands, slot) < 0) {
+					clear_overlay_part2(a_target, isFemale, "Hands", slot);
+				}
+			}
+
+			i = JArray::count(empty_feet_slots);
+			while (i > 0) {
+				i -= 1;
+
+				slot = JArray::getInt(empty_feet_slots, i);
+				if (JArray::findInt(external_on_feet, slot) < 0) {
+					clear_overlay_part2(a_target, isFemale, "Feet", slot);
+				}
+			}
+
+			NiOverride::ApplyNodeOverrides(a_target);
+
+			JFormDB::setInt(a_target, ".SlaveTats.updated", 0);
+
+			i = JArray::count(to_deactivate);
+			while (i > 0) {
+				i -= 1;
+
+				idx = JArray::findObj(to_activate, JArray::getObj(to_deactivate, i));
+				if (idx >= 0) {
+					JArray::eraseIndex(to_activate, idx);
+					JArray::eraseIndex(to_deactivate, i);
+				}
+			}
+
+			int tattoo;
+			// int evt;
+
+			i = JArray::count(to_deactivate);
+			while (i > 0) {
+				i -= 1;
+
+				tattoo = JArray::getObj(to_deactivate, i);
+
+				deactivate_tattoo_magic(a_target, tattoo);
+
+				// TODO send mod event
+				/*
+			evt = ModEvent.Create("SlaveTats-removed")
+			if evt
+				ModEvent.PushString(evt, JMap.getStr(tattoo, "section"))
+				ModEvent.PushString(evt, JMap.getStr(tattoo, "name"))
+				ModEvent.PushForm(evt, target)
+				ModEvent.Send(evt)
+			endif
+			*/
+			}
+
+			i = JArray::count(to_activate);
+			idx = 0;
+			while (idx < i) {
+				tattoo = JArray::getObj(to_activate, idx);
+
+				activate_tattoo_magic(a_target, tattoo);
+
+				// Send mod event ?
+				/*
+				evt = ModEvent.Create("SlaveTats-added")
+				if evt
+					ModEvent.PushString(evt, JMap.getStr(tattoo, "section"))
+					ModEvent.PushString(evt, JMap.getStr(tattoo, "name"))
+					ModEvent.PushForm(evt, target)
+					ModEvent.Send(evt)
+				endif
+				*/
+
+				idx += 1;
+			}
+
+			logger::info("Synchronization complete.");
+			// notify("SlaveTats is done with " + target.GetLeveledActorBase().GetName() + ".", silent)
+			if (!a_silent) {
+				// TODO Enable player controls
+			}
+
+			JValue::cleanPool("SlaveTats-synchronize_tattoos");
+			return false;
+		}
+	}
+
+	fail_t synchronize_tattoos(RE::Actor* a_target, bool a_silent)
+	{
+		logger::info("synchronize_tattoos: a_target = {}", (void*)a_target);
+
+		if (!a_target) {
+			logger::info("a_target is null");
+			return true;
+		}
+
+		logger::info("synchronize_tattoos: current thread id = {}", slavetats_ng::threading::thread_id_to_string(std::this_thread::get_id()));
+
+		if (std::this_thread::get_id() != slavetats_ng::threading::System::GetSingleton()->main_thread_id()) {
+			//std::promise<fail_t> result;
+			//auto                 future = result.get_future();
+
+			SKSE::GetTaskInterface()->AddTask([a_target, a_silent] {
+				//result.set_value(
+				synchronize_tattoos_internal(a_target, a_silent);
+				//);
+			});
+			//future.wait();
+			//return future.get();
+			return false;
+		} else {
+			return synchronize_tattoos_internal(a_target, a_silent);
+		}
+	}
+
+}
