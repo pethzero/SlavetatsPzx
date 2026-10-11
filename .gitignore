@@ -1,0 +1,23 @@
+# IDE
+.idea
+.vs
+.vscode/settings.json
+*.user
+
+# Build output
+build
+install
+out
+cmake-build*
+compile_commands.json
+
+# vcpkg
+vcpkg_installed
+
+# Locally downloaded dependencies (see build.ps1)
+deps
+
+# imgui extras not used by the build
+imgui/examples
+imgui/docs
+imgui/.github
