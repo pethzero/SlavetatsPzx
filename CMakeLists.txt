@@ -4,10 +4,10 @@ message("Using toolchain file ${CMAKE_TOOLCHAIN_FILE}.")
 ########################################################################################################################
 ## Define project
 ########################################################################################################################
-# Output is SlavetatsPzx.dll: the full SlaveTatsNG plugin plus the SKSE Menu Framework UI.
+# Output is SlavetatsGUIPzx.dll: the full SlaveTatsNG plugin plus the SKSE Menu Framework UI.
 # It replaces SlaveTatsNG.dll, never install both.
 project(
-        SlavetatsPzx
+        SlavetatsGUIPzx
         VERSION 0.8.2
         DESCRIPTION "SlaveTats as SKSE plugin, with in-game menu."
         LANGUAGES CXX)
@@ -73,6 +73,7 @@ set(headers ${headers}
 	include/tattoo_browser.h
 	include/tattoo_thumbs.h
 	extern/FUCK_API.h
+	extern/SmoothCamAPI.h
 	src/PCH.h
 )
 

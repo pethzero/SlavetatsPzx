@@ -96,6 +96,7 @@ namespace
 		case SKSE::MessagingInterface::kPostPostLoad:
 			// publish C++ interface	
 			SKSE::GetMessagingInterface()->Dispatch(slavetats::MessageType::Interface, (void*)&slavetats::addresses_instance, sizeof(void*), nullptr);
+			slavetats_ng::tattoo_browser::OnPostPostLoad();  // SmoothCam API request
 			break;
 
 		case SKSE::MessagingInterface::kDataLoaded:

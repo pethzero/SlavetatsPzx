@@ -11,6 +11,9 @@ namespace slavetats_ng
 		// kPostLoad: connect to FLICK and register the window. Does nothing (IsAvailable() stays false) without FLICK.
 		void Register();
 
+		// kPostPostLoad: ask SmoothCam (if installed) for its API, so the browser can borrow the camera from it.
+		void OnPostPostLoad();
+
 		// kDataLoaded: start listening for the hotkey.
 		void OnDataLoaded();
 
@@ -20,7 +23,7 @@ namespace slavetats_ng
 		void Open();
 		void Close();
 
-		// DirectInput scan code, 0 = none. SetHotkey saves it to Data/SKSE/Plugins/SlavetatsPzx.ini.
+		// DirectInput scan code, 0 = none. SetHotkey saves it to Data/SKSE/Plugins/SlavetatsGUIPzx.ini.
 		std::uint32_t GetHotkey();
 		void          SetHotkey(std::uint32_t a_scanCode);
 		std::string   KeyName(std::uint32_t a_scanCode);

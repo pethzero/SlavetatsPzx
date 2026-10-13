@@ -776,7 +776,7 @@ namespace slavetats_ng
 				logger::info("SKSE Menu Framework is not installed, the in-game menu is disabled");
 				return;
 			}
-			SKSEMenuFramework::SetSection("SlavetatsPzx");
+			SKSEMenuFramework::SetSection("SlavetatsGUIPzx");
 			SKSEMenuFramework::AddSectionItem("Setup", RenderSetup);
 			SKSEMenuFramework::AddSectionItem("Body Tattoos", RenderBody);
 			SKSEMenuFramework::AddSectionItem("Head Tattoos", RenderHead);

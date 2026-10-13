@@ -2,7 +2,7 @@
 rem Usage: build.bat [release|debug] [mod output folder]
 rem   build.bat
 rem   build.bat debug
-rem   build.bat release "D:\MO2\mods\SlavetatsPzx"
+rem   build.bat release "D:\MO2\mods\SlavetatsGUIPzx"
 set PRESET=%~1
 if "%PRESET%"=="" set PRESET=release
 

@@ -1,5 +1,13 @@
 # Changes
 
+## SlavetatsGUIPzx UI v3.1 (tag `ui-v3-1`)
+
+* **Renamed SlavetatsPzx -> SlavetatsGUIPzx**: the DLL (`SlavetatsGUIPzx.dll`), the menu section, the settings file
+  (`Data/SKSE/Plugins/SlavetatsGUIPzx.ini`, read from the old `SlavetatsPzx.ini` until it exists), the thumbnail cache
+  and the GitHub repository. Remove the old `SlavetatsPzx.dll` when updating; `build.ps1 -OutputDir` does it for you.
+* **SmoothCam compatibility**: the Tattoo Browser borrows the camera through SmoothCam's API while it is open and
+  hands it back (sent to its goal position) on close, instead of fighting it every frame.
+* README: warnings about camera mods, scenes, Preview and saving, and the rename.
 ## SlavetatsPzx UI v3 (tag `ui-v3`)
 
 * **Tattoo Browser** on FLICK: a full-height panel docked to the left edge, the character beside it, the world still

@@ -1,9 +1,9 @@
-# SlavetatsPzx
+# SlavetatsGUIPzx
 
 SlaveTats as a C++/SKSE plugin, with a modern in-game tattoo editor.
 
 Built on [SlaveTatsNG](https://github.com/nopse0/SlaveTatsNG) by nopse0: the tattoo logic, the JContainers data and the
-Papyrus API are SlaveTatsNG's, so mods that use SlaveTats keep working. SlavetatsPzx adds two UIs on top of it:
+Papyrus API are SlaveTatsNG's, so mods that use SlaveTats keep working. SlavetatsGUIPzx adds two UIs on top of it:
 
 * **Mod Control Panel pages** (SKSE Menu Framework) for setup and quick edits.
 * **Tattoo Browser** (FLICK), a full-height panel beside your character with DDS thumbnails, a free camera and live preview.
@@ -42,8 +42,46 @@ Both read and write the same SlaveTats records as the MCM (`.SlaveTats.applied`)
 ### Thumbnails
 
 DDS textures are read through the game's resource system, so loose files and BSAs both work, and all BC formats
-(BC1-BC7) are supported. The browser caches 256 px PNG thumbnails in `Data/SKSE/Plugins/SlavetatsPzx/Thumbs/`, so
+(BC1-BC7) are supported. The browser caches 256 px PNG thumbnails in `Data/SKSE/Plugins/SlavetatsGUIPzx/Thumbs/`, so
 each texture is decoded once.
+
+## ⚠ Warnings
+
+Read these before installing. **Back up your saves** the first time you use it.
+
+### Camera
+
+The Tattoo Browser takes over the third-person camera while it is open (orbit, tilt, zoom, the sideways shift that
+puts the character beside the panel) and puts it back when it closes.
+
+* **SmoothCam**: supported. The browser borrows the camera through SmoothCam's own API while it is open and hands it
+  back afterwards, so the two don't fight. Check `SlavetatsGUIPzx.log` for `got the SmoothCam interface`.
+* **Other camera mods** (Improved Camera, True Directional Movement's camera options, Customizable Camera, ...) have
+  no such API and may still move the camera at the same time: jitter, a camera that drifts, or a shot that ends up in
+  the wrong place. If that happens, set `fCameraShift = 0`, or turn the other mod's camera features off while
+  browsing.
+* **Don't open the browser** in combat, on horseback, while sitting or crafting, or during scenes and animations
+  (OStim, SexLab and the like). Those modes own the camera and the character's heading, and the browser fights them.
+* **If the camera looks wrong after closing** (stuck to one side, odd zoom), open and close the browser once more,
+  switch view (F) twice, or reload. Nothing about the camera is saved, so a reload always fixes it.
+* The browser forces third-person view while it is open and switches back to first person on close if you were in it.
+
+### Gameplay
+
+* **The game is not paused** while the browser is open. You can't move or attack (the browser keeps the input), but
+  the world keeps running, so don't browse with enemies around.
+* **Preview** applies the hovered/selected pattern to the character for real, just without a SlaveTats record.
+  Closing the browser, Undo or leaving the slot puts the saved tattoos back. **Don't save the game while
+  previewing**: RaceMenu stores overlays in its own co-save, so a previewed pattern would be saved with it (opening
+  and closing the browser again cleans it up).
+* Don't edit tattoos in the SlaveTats MCM and in the browser at the same time; close one before using the other.
+
+### Installation
+
+* `SlavetatsGUIPzx.dll` **replaces** `SlaveTatsNG.dll`. Never install both, or the plugin loads twice.
+* **This plugin was called `SlavetatsPzx` before ui-v3-1.** Remove the old `SlavetatsPzx.dll` (and `.pdb`) when you
+  update, for the same reason. Your browser settings carry over from `SlavetatsPzx.ini`; the old thumbnail cache
+  folder `Data/SKSE/Plugins/SlavetatsPzx/` can be deleted.
 
 ## Requirements
 
@@ -60,15 +98,16 @@ The menu and the browser are optional: without SKSE Menu Framework or FLICK the 
 ## Installation
 
 1. Install the requirements.
-2. Install the release zip with your mod manager. It contains `SKSE/Plugins/SlavetatsPzx.dll` (and its `.pdb` for
+2. Install the release zip with your mod manager. It contains `SKSE/Plugins/SlavetatsGUIPzx.dll` (and its `.pdb` for
    crash logs).
-3. `SlavetatsPzx.dll` **replaces** `SlaveTatsNG.dll`. Don't install both, or the plugin loads twice. Keep
+3. `SlavetatsGUIPzx.dll` **replaces** `SlaveTatsNG.dll` (and the old `SlavetatsPzx.dll`). Don't install both, or the
+   plugin loads twice. Keep
    SlaveTatsNG's other files (scripts and `Data/SKSE/Plugins/SlaveTatsNG/SlaveTatsNG.ini`, `skee_addresses.json`),
    which this plugin reads too.
 
 ## Usage
 
-1. Open the Mod Control Panel (SKSE Menu Framework, F1 by default) > **SlavetatsPzx** > **Setup**.
+1. Open the Mod Control Panel (SKSE Menu Framework, F1 by default) > **SlavetatsGUIPzx** > **Setup**.
 2. Press **Select Player** (or select an NPC in the console and press **Select Console Target**).
 3. Press **Open Tattoo Browser**, or set a hotkey with **Set hotkey** and press it in gameplay.
 4. Pick a tab, click a slot, choose a group and a pattern, set the colors, press **Save Tattoo**.
@@ -77,7 +116,7 @@ After installing or removing tattoo packs, press **Add/remove tattoos** on the S
 
 ## Settings
 
-`Data/SKSE/Plugins/SlavetatsPzx.ini` (written by the menu; with MO2 it ends up in `overwrite`):
+`Data/SKSE/Plugins/SlavetatsGUIPzx.ini` (written by the menu; with MO2 it ends up in `overwrite`):
 
 ```ini
 [Browser]
@@ -97,9 +136,9 @@ CommonLibSSE-NG, DirectXTex and the other dependencies come from the vcpkg manif
 `vcpkg-configuration.json`). The first build downloads and builds them.
 
 ```
-build.bat                                      # release -> build\release-msvc\SlavetatsPzx.dll
+build.bat                                      # release -> build\release-msvc\SlavetatsGUIPzx.dll
 build.bat debug                                # debug   -> build\debug-msvc
-build.bat release "D:\MO2\mods\SlavetatsPzx"   # also copy the DLL/PDB + config into a mod folder
+build.bat release "D:\MO2\mods\SlavetatsGUIPzx"   # also copy the DLL/PDB + config into a mod folder
 ```
 
 `build.ps1` takes the same options (`-Preset`, `-Clean`, `-OutputDir`).
@@ -113,6 +152,7 @@ build.bat release "D:\MO2\mods\SlavetatsPzx"   # also copy the DLL/PDB + config 
 | `src/tattoo_browser.cpp` | FLICK Tattoo Browser, camera and turntable, preview |
 | `src/dds_preview.*`, `src/tattoo_thumbs.*` | DDS thumbnails (D3D11 for the menu, PNG cache for FLICK) |
 | `extern/FUCK_API.h` | FLICK's plugin API header |
+| `extern/SmoothCamAPI.h` | SmoothCam's modder API header (borrowing the camera) |
 | `extern/imgui/` | Dear ImGui 1.92.8 headers, types only (FLICK owns the ImGui context) |
 | everything else | SlaveTatsNG |
 
@@ -123,6 +163,7 @@ build.bat release "D:\MO2\mods\SlavetatsPzx"   # also copy the DLL/PDB + config 
 * FLICK by Fuzzles
 * [Fitting Room](https://www.nexusmods.com/skyrimspecialedition/mods/185342), whose editor inspired the browser's
   layout and whose notes on FLICK's quirks saved a lot of time (no code was copied)
+* [SmoothCam](https://github.com/mwilsnd/SkyrimSE-SmoothCam) by mwilsnd, for its modder API (`extern/SmoothCamAPI.h`)
 * [Dear ImGui](https://github.com/ocornut/imgui) (MIT), [DirectXTex](https://github.com/microsoft/DirectXTex) (MIT)
 * [VMTHook](https://github.com/gfreivasc/VMTHook)
 

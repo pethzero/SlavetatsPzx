@@ -9,6 +9,9 @@
 #include <imgui.h>  // types only: FLICK owns the ImGui context and every call goes through its interface
 #include "FUCK_API.h"
 
+#define SMOOTHCAM_API_COMMONLIB
+#include "SmoothCamAPI.h"
+
 // Tattoo Browser on FLICK.
 //
 // A panel docked to the left edge, the character beside it, the world still running. No game menu is used as a
@@ -26,7 +29,8 @@ namespace slavetats_ng
 	{
 		namespace
 		{
-			constexpr const char*   kSettingsFile = "Data/SKSE/Plugins/SlavetatsPzx.ini";
+			constexpr const char*   kSettingsFile = "Data/SKSE/Plugins/SlavetatsGUIPzx.ini";
+			constexpr const char*   kOldSettingsFile = "Data/SKSE/Plugins/SlavetatsPzx.ini";
 			constexpr int           kSlotsPerPage = 6;  // 2 x 3
 
 			// ------------------------------ Settings -------------------------------------------------------------
@@ -40,7 +44,10 @@ namespace slavetats_ng
 			{
 				CSimpleIniA ini;
 				ini.SetUnicode();
-				if (ini.LoadFile(kSettingsFile) >= 0) {
+				// The plugin was called SlavetatsPzx before ui-v3-1: keep its settings until the new file is written
+				std::error_code ec;
+				const char*     file = std::filesystem::exists(kSettingsFile, ec) ? kSettingsFile : kOldSettingsFile;
+				if (ini.LoadFile(file) >= 0) {
 					Hotkey = static_cast<std::uint32_t>(ini.GetLongValue("Browser", "iHotkey", 0));
 					CameraShift = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraShift", CameraShift));
 					PreviewMode = ini.GetBoolValue("Browser", "bPreview", PreviewMode);
@@ -468,9 +475,43 @@ namespace slavetats_ng
 					state->targetZoomOffset = std::clamp(Saved.zoom + zoom, 0.0f, 1.0f);
 			}
 
+			// ------------------------------ SmoothCam ------------------------------------------------------------
+			// SmoothCam drives the third-person camera itself every frame, so our turntable and its re-asserted
+			// offsets fought it. Its modder API lets another plugin borrow the camera: while we hold it SmoothCam
+			// steps aside and the vanilla camera runs, which is what the turntable is written against.
+
+			SmoothCamAPI::IVSmoothCam1*   SmoothCam = nullptr;
+			SmoothCamAPI::InterfaceVersion SmoothCamVersion = SmoothCamAPI::InterfaceVersion::V1;
+			bool                          SmoothCamHeld = false;  // game thread
+
+			void TakeCameraFromSmoothCam()
+			{
+				if (!SmoothCam)
+					return;
+				using R = SmoothCamAPI::APIResult;
+				auto result = SmoothCam->RequestCameraControl(SKSE::GetPluginHandle());
+				SmoothCamHeld = result == R::OK || result == R::AlreadyGiven;
+				if (!SmoothCamHeld)
+					logger::info("Tattoo Browser: SmoothCam kept the camera (result {}), the turntable may fight it",
+						static_cast<int>(result));
+			}
+
+			void GiveCameraBackToSmoothCam()
+			{
+				if (!SmoothCam || !SmoothCamHeld)
+					return;
+				auto handle = SKSE::GetPluginHandle();
+				// Glide back to its usual spot behind the player instead of starting from where we left the camera
+				if (SmoothCamVersion >= SmoothCamAPI::InterfaceVersion::V2)
+					static_cast<SmoothCamAPI::IVSmoothCam2*>(SmoothCam)->SendToGoalPosition(handle, true, false, RE::PlayerCharacter::GetSingleton());
+				SmoothCam->ReleaseCameraControl(handle);
+				SmoothCamHeld = false;
+			}
+
 			void BrowserWindow::OnOpenedGame()
 			{
 				Saved = {};
+				TakeCameraFromSmoothCam();  // before anything reads or writes the camera
 				if (auto camera = RE::PlayerCamera::GetSingleton()) {
 					Saved.wasFirstPerson = camera->IsInFirstPerson();
 					camera->ForceThirdPerson();
@@ -507,6 +548,7 @@ namespace slavetats_ng
 						camera->ForceFirstPerson();
 				}
 				Saved = {};
+				GiveCameraBackToSmoothCam();  // after our values are restored
 				FUCK::ForceCursor(false);
 				logger::info("Tattoo Browser: closed");
 			}
@@ -1071,13 +1113,29 @@ namespace slavetats_ng
 		void Register()
 		{
 			LoadSettings();
-			if (!FUCK::Connect("SlavetatsPzx")) {
+			if (!FUCK::Connect("SlavetatsGUIPzx")) {
 				logger::info("Tattoo Browser: FLICK (FUCK.dll) not found or too old, the browser is disabled");
 				return;
 			}
 			FUCK::RegisterWindow(&Window);
 			Available = true;
 			logger::info("Tattoo Browser: registered with FLICK");
+
+			// SmoothCam answers the interface request (sent at kPostPostLoad) through this listener
+			auto registered = SmoothCamAPI::RegisterInterfaceLoaderCallback(SKSE::GetMessagingInterface(),
+				[](void* a_interface, SmoothCamAPI::InterfaceVersion a_version) {
+					SmoothCam = static_cast<SmoothCamAPI::IVSmoothCam1*>(a_interface);
+					SmoothCamVersion = a_version;
+					logger::info("Tattoo Browser: got the SmoothCam interface (V{})", static_cast<int>(a_version) + 1);
+				});
+			if (!registered)
+				logger::info("Tattoo Browser: SmoothCam not loaded");
+		}
+
+		void OnPostPostLoad()
+		{
+			if (Available)
+				(void)SmoothCamAPI::RequestInterface(SKSE::GetMessagingInterface(), SmoothCamAPI::InterfaceVersion::V3);
 		}
 
 		void OnDataLoaded()
