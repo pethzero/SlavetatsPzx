@@ -27,5 +27,9 @@ namespace slavetats_ng
 
 		// Uploads decoded textures and frees unused ones. Call once per frame from the UI thread, before Get().
 		void Pump();
+
+		// Reads a texture file through the game's resource system (loose files and BSAs), path relative to Data\Textures.
+		// Any thread.
+		bool ReadTexture(const std::string& a_texture, std::vector<std::uint8_t>& a_out);
 	}
 }

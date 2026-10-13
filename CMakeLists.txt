@@ -69,6 +69,10 @@ set(headers ${headers}
 	include/SKSEMenuFramework.h
 	include/ui_menu.h
 	include/dds_preview.h
+	include/tattoo_model.h
+	include/tattoo_browser.h
+	include/tattoo_thumbs.h
+	extern/FUCK_API.h
 	src/PCH.h
 )
 
@@ -107,6 +111,9 @@ set(sources ${sources}
 	src/nioverride_impl_legacy.cpp
 	src/ui_menu.cpp
 	src/dds_preview.cpp
+	src/tattoo_model.cpp
+	src/tattoo_browser.cpp
+	src/tattoo_thumbs.cpp
 )
 
 ########################################################################################################################
@@ -117,6 +124,7 @@ find_package(magic_enum CONFIG REQUIRED)
 find_package(xbyak CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_package(unofficial-hash-library)
+find_package(directxtex CONFIG REQUIRED)  # DDS -> PNG thumbnails for the FLICK browser
 find_path(CLIB_UTIL_INCLUDE_DIRS "ClibUtil/utils.hpp")
 
 add_commonlibsse_plugin(${PROJECT_NAME} SOURCES ${headers} ${sources})
@@ -125,6 +133,8 @@ add_library("${PROJECT_NAME}::${PROJECT_NAME}" ALIAS "${PROJECT_NAME}")
 target_include_directories(${PROJECT_NAME}
         PRIVATE
         $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/src>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extern>
+        $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/extern/imgui>
         $<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/src>
 		$<BUILD_INTERFACE:${CMAKE_CURRENT_BINARY_DIR}/cmake>
         $<INSTALL_INTERFACE:src>)
@@ -140,6 +150,7 @@ target_link_libraries(${PROJECT_NAME}
 		xbyak::xbyak
 		nlohmann_json::nlohmann_json
 		unofficial::hash-library
+		Microsoft::DirectXTex
         )
 
 # SKSEMenuFramework.h uses std::wstring_convert

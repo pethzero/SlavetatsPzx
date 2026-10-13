@@ -7,6 +7,7 @@
 #include "cache.h"
 #include "skee_addresses.h"
 #include "ui_menu.h"
+#include "tattoo_browser.h"
 
 #include "SlaveTatsNG_InterFace.h"
 
@@ -88,6 +89,7 @@ namespace
 
 				// All plugins are loaded now, so SKSEMenuFramework.dll can be found
 				slavetats_ng::ui_menu::Register();
+				slavetats_ng::tattoo_browser::Register();  // FLICK window, soft dependency
 			}
 			break;
 
@@ -100,6 +102,7 @@ namespace
 			{
 				slavetats_ng::jcwrapper::JCWrapper::GetSingleton()->Init();
 				slavetats_ng::skee_wrapper::NiOverride::Init();
+				slavetats_ng::tattoo_browser::OnDataLoaded();
 			}
 			break;
 

@@ -19,7 +19,8 @@
             "nlohmann-json",
 			"clib-util",
             "ms-gsl",
-			"hash-library"
+			"hash-library",
+            "directxtex"
           ]
         }
     },

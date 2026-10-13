@@ -1,5 +1,15 @@
 # Changes
 
+## SlavetatsPzx UI v3 (tag `ui-v3`)
+
+* **Tattoo Browser** on FLICK: a full-height panel docked to the left edge, the character beside it, the world still
+  running. No game menu underneath, and the game never gets a click while it is open.
+* Free camera outside the panel: left drag orbits and tilts, right drag turns the character, middle drag moves the
+  camera, wheel zooms. Everything is restored on close.
+* **Preview** (Setup page): hovering a pattern shows it on the character without saving, like trying clothes on.
+* Thumbnails in the browser: DDS decoded with DirectXTex (BC1-BC7) into a PNG cache that FLICK loads.
+* Hotkey for the browser (Setup > Set hotkey), saved in `Data/SKSE/Plugins/SlavetatsPzx.ini`.
+* Shared `tattoo_model` behind both UIs.
 ## SlavetatsPzx UI v2 (tag `ui-v2`)
 
 In-game menu (SKSE Menu Framework) redesign, on top of SlaveTatsNG 0.8.2:

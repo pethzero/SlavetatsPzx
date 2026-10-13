@@ -263,7 +263,7 @@ namespace slavetats_ng
 				std::string               error;
 			};
 
-			bool ReadFile(const std::string& a_texture, std::vector<std::uint8_t>& a_out)
+			bool ReadFileImpl(const std::string& a_texture, std::vector<std::uint8_t>& a_out)
 			{
 				// Game resource system first (loose files and BSAs, through MO2's VFS), plain file as fallback
 				std::string path = "Textures\\" + a_texture;
@@ -288,7 +288,7 @@ namespace slavetats_ng
 				result.key = a_key;
 
 				std::vector<std::uint8_t> file;
-				if (!ReadFile(a_texture, file)) {
+				if (!ReadFileImpl(a_texture, file)) {
 					result.error = "file not found";
 					return result;
 				}
@@ -514,6 +514,11 @@ namespace slavetats_ng
 			}
 
 			Evict();
+		}
+
+		bool ReadTexture(const std::string& a_texture, std::vector<std::uint8_t>& a_out)
+		{
+			return ReadFileImpl(a_texture, a_out);
 		}
 
 		Preview Get(const std::string& a_texture)
