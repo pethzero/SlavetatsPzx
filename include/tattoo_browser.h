@@ -23,7 +23,7 @@ namespace slavetats_ng
 		void Open();
 		void Close();
 
-		// DirectInput scan code, 0 = none. SetHotkey saves it to Data/SKSE/Plugins/SlavetatsGUIPzx.ini.
+		// DirectInput scan code, 0 = none. SetHotkey saves it to Data/SKSE/Plugins/SlavetatsUIPzx.ini.
 		std::uint32_t GetHotkey();
 		void          SetHotkey(std::uint32_t a_scanCode);
 		std::string   KeyName(std::uint32_t a_scanCode);

@@ -20,7 +20,7 @@ namespace slavetats_ng
 		{
 			constexpr std::size_t kThumbPx = 256;      // longest edge of a cached thumbnail
 			constexpr int         kImagesPerPump = 2;  // FLICK image loads per frame
-			constexpr const char* kCacheDir = "Data/SKSE/Plugins/SlavetatsGUIPzx/Thumbs";
+			constexpr const char* kCacheDir = "Data/SKSE/Plugins/SlavetatsUIPzx/Thumbs";
 			constexpr const char* kCacheVersion = "v1";  // bump to invalidate every cached PNG
 
 			std::string Key(const std::string& a_texture)

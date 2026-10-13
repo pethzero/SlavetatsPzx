@@ -29,7 +29,7 @@ namespace slavetats_ng
 	{
 		namespace
 		{
-			constexpr const char*   kSettingsFile = "Data/SKSE/Plugins/SlavetatsGUIPzx.ini";
+			constexpr const char*   kSettingsFile = "Data/SKSE/Plugins/SlavetatsUIPzx.ini";
 			constexpr const char*   kOldSettingsFile = "Data/SKSE/Plugins/SlavetatsPzx.ini";
 			constexpr int           kSlotsPerPage = 6;  // 2 x 3
 
@@ -1113,7 +1113,7 @@ namespace slavetats_ng
 		void Register()
 		{
 			LoadSettings();
-			if (!FUCK::Connect("SlavetatsGUIPzx")) {
+			if (!FUCK::Connect("SlavetatsUIPzx")) {
 				logger::info("Tattoo Browser: FLICK (FUCK.dll) not found or too old, the browser is disabled");
 				return;
 			}

@@ -1,9 +1,9 @@
-# SlavetatsGUIPzx
+# SlavetatsUIPzx
 
 SlaveTats as a C++/SKSE plugin, with a modern in-game tattoo editor.
 
 Built on [SlaveTatsNG](https://github.com/nopse0/SlaveTatsNG) by nopse0: the tattoo logic, the JContainers data and the
-Papyrus API are SlaveTatsNG's, so mods that use SlaveTats keep working. SlavetatsGUIPzx adds two UIs on top of it:
+Papyrus API are SlaveTatsNG's, so mods that use SlaveTats keep working. SlavetatsUIPzx adds two UIs on top of it:
 
 * **Mod Control Panel pages** (SKSE Menu Framework) for setup and quick edits.
 * **Tattoo Browser** (FLICK), a full-height panel beside your character with DDS thumbnails, a free camera and live preview.
@@ -42,7 +42,7 @@ Both read and write the same SlaveTats records as the MCM (`.SlaveTats.applied`)
 ### Thumbnails
 
 DDS textures are read through the game's resource system, so loose files and BSAs both work, and all BC formats
-(BC1-BC7) are supported. The browser caches 256 px PNG thumbnails in `Data/SKSE/Plugins/SlavetatsGUIPzx/Thumbs/`, so
+(BC1-BC7) are supported. The browser caches 256 px PNG thumbnails in `Data/SKSE/Plugins/SlavetatsUIPzx/Thumbs/`, so
 each texture is decoded once.
 
 ## ⚠ Warnings
@@ -55,7 +55,7 @@ The Tattoo Browser takes over the third-person camera while it is open (orbit, t
 puts the character beside the panel) and puts it back when it closes.
 
 * **SmoothCam**: supported. The browser borrows the camera through SmoothCam's own API while it is open and hands it
-  back afterwards, so the two don't fight. Check `SlavetatsGUIPzx.log` for `got the SmoothCam interface`.
+  back afterwards, so the two don't fight. Check `SlavetatsUIPzx.log` for `got the SmoothCam interface`.
 * **Other camera mods** (Improved Camera, True Directional Movement's camera options, Customizable Camera, ...) have
   no such API and may still move the camera at the same time: jitter, a camera that drifts, or a shot that ends up in
   the wrong place. If that happens, set `fCameraShift = 0`, or turn the other mod's camera features off while
@@ -78,7 +78,7 @@ puts the character beside the panel) and puts it back when it closes.
 
 ### Installation
 
-* `SlavetatsGUIPzx.dll` **replaces** `SlaveTatsNG.dll`. Never install both, or the plugin loads twice.
+* `SlavetatsUIPzx.dll` **replaces** `SlaveTatsNG.dll`. Never install both, or the plugin loads twice.
 * **This plugin was called `SlavetatsPzx` before ui-v3-1.** Remove the old `SlavetatsPzx.dll` (and `.pdb`) when you
   update, for the same reason. Your browser settings carry over from `SlavetatsPzx.ini`; the old thumbnail cache
   folder `Data/SKSE/Plugins/SlavetatsPzx/` can be deleted.
@@ -98,16 +98,16 @@ The menu and the browser are optional: without SKSE Menu Framework or FLICK the 
 ## Installation
 
 1. Install the requirements.
-2. Install the release zip with your mod manager. It contains `SKSE/Plugins/SlavetatsGUIPzx.dll` (and its `.pdb` for
+2. Install the release zip with your mod manager. It contains `SKSE/Plugins/SlavetatsUIPzx.dll` (and its `.pdb` for
    crash logs).
-3. `SlavetatsGUIPzx.dll` **replaces** `SlaveTatsNG.dll` (and the old `SlavetatsPzx.dll`). Don't install both, or the
+3. `SlavetatsUIPzx.dll` **replaces** `SlaveTatsNG.dll` (and the old `SlavetatsPzx.dll`). Don't install both, or the
    plugin loads twice. Keep
    SlaveTatsNG's other files (scripts and `Data/SKSE/Plugins/SlaveTatsNG/SlaveTatsNG.ini`, `skee_addresses.json`),
    which this plugin reads too.
 
 ## Usage
 
-1. Open the Mod Control Panel (SKSE Menu Framework, F1 by default) > **SlavetatsGUIPzx** > **Setup**.
+1. Open the Mod Control Panel (SKSE Menu Framework, F1 by default) > **SlavetatsUIPzx** > **Setup**.
 2. Press **Select Player** (or select an NPC in the console and press **Select Console Target**).
 3. Press **Open Tattoo Browser**, or set a hotkey with **Set hotkey** and press it in gameplay.
 4. Pick a tab, click a slot, choose a group and a pattern, set the colors, press **Save Tattoo**.
@@ -116,7 +116,7 @@ After installing or removing tattoo packs, press **Add/remove tattoos** on the S
 
 ## Settings
 
-`Data/SKSE/Plugins/SlavetatsGUIPzx.ini` (written by the menu; with MO2 it ends up in `overwrite`):
+`Data/SKSE/Plugins/SlavetatsUIPzx.ini` (written by the menu; with MO2 it ends up in `overwrite`):
 
 ```ini
 [Browser]
@@ -136,9 +136,9 @@ CommonLibSSE-NG, DirectXTex and the other dependencies come from the vcpkg manif
 `vcpkg-configuration.json`). The first build downloads and builds them.
 
 ```
-build.bat                                      # release -> build\release-msvc\SlavetatsGUIPzx.dll
+build.bat                                      # release -> build\release-msvc\SlavetatsUIPzx.dll
 build.bat debug                                # debug   -> build\debug-msvc
-build.bat release "D:\MO2\mods\SlavetatsGUIPzx"   # also copy the DLL/PDB + config into a mod folder
+build.bat release "D:\MO2\mods\SlavetatsUIPzx"   # also copy the DLL/PDB + config into a mod folder
 ```
 
 `build.ps1` takes the same options (`-Preset`, `-Clean`, `-OutputDir`).

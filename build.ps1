@@ -1,12 +1,12 @@
 <#
 .SYNOPSIS
-    Configure + build SlavetatsGUIPzx using CMakePresets.json (Ninja + MSVC + vcpkg manifest).
+    Configure + build SlavetatsUIPzx using CMakePresets.json (Ninja + MSVC + vcpkg manifest).
 
 .EXAMPLE
     .\build.ps1                                  # release build (build\release-msvc)
     .\build.ps1 -Preset debug                    # debug build   (build\debug-msvc)
     .\build.ps1 -Clean                           # delete the build folder, then rebuild
-    .\build.ps1 -OutputDir "D:\MO2\mods\SlavetatsGUIPzx"
+    .\build.ps1 -OutputDir "D:\MO2\mods\SlavetatsUIPzx"
                                                  # also copy the DLL/PDB + config into a mod folder
 #>
 param(
@@ -112,12 +112,12 @@ if ($OutputDir) {
     $config = Join-Path $plugins "SlaveTatsNG"
     New-Item -ItemType Directory -Force $config | Out-Null
 
-    Copy-Item (Join-Path $buildDir "SlavetatsGUIPzx.dll") $plugins -Force
-    $pdb = Join-Path $buildDir "SlavetatsGUIPzx.pdb"
+    Copy-Item (Join-Path $buildDir "SlavetatsUIPzx.dll") $plugins -Force
+    $pdb = Join-Path $buildDir "SlavetatsUIPzx.pdb"
     if (Test-Path $pdb) { Copy-Item $pdb $plugins -Force }
     Copy-Item (Join-Path $PSScriptRoot "config\*") $config -Force
 
-    # SlavetatsGUIPzx.dll contains the whole SlaveTatsNG plugin; an old SlaveTatsNG.dll next to it would load twice
+    # SlavetatsUIPzx.dll contains the whole SlaveTatsNG plugin; an old SlaveTatsNG.dll next to it would load twice
     $old = Join-Path $plugins "SlaveTatsNG.dll"
     if (Test-Path $old) { Write-Host "WARNING: remove $old (and any other SlaveTatsNG.dll in your load order)" -ForegroundColor Yellow }
     # The plugin was called SlavetatsPzx before ui-v3-1; both names would load the same plugin twice
