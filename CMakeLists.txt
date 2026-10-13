@@ -68,6 +68,7 @@ set(headers ${headers}
 	include/nioverride_impl_legacy.h
 	include/SKSEMenuFramework.h
 	include/ui_menu.h
+	include/dds_preview.h
 	src/PCH.h
 )
 
@@ -105,6 +106,7 @@ set(sources ${sources}
 	src/vm_hook.cpp
 	src/nioverride_impl_legacy.cpp
 	src/ui_menu.cpp
+	src/dds_preview.cpp
 )
 
 ########################################################################################################################

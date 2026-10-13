@@ -1,5 +1,19 @@
 # Changes
 
+## SlavetatsPzx UI v2 (tag `ui-v2`)
+
+In-game menu (SKSE Menu Framework) redesign, on top of SlaveTatsNG 0.8.2:
+
+* Body/Head/Hand/Foot pages are a master-detail layout: a compact slot list (thumbnail, applied pattern, status dot) and an editor for the selected slot.
+* Groups are pill buttons with pattern counts, plus a search box across every group.
+* Patterns are a thumbnail grid that adapts to the window width; selected and applied patterns are marked, hovering shows name, group, credit and texture path.
+* DDS thumbnails (`dds_preview`): read through the game's resource system (loose files and BSAs), BC1-BC7 and common uncompressed formats, nearest mip to 256 px, decoded on a worker thread, LRU-cached on the GPU. Shown on a light gray checkerboard so black ink stays visible.
+* Ink/Glow use a compact popup (SlaveTats MCM palette plus a fixed-size picker) instead of ImGui's font-sized color picker.
+
+## SlavetatsPzx UI v1 (tag `ui-v1`)
+
+* First SKSE Menu Framework menu: Setup / Body / Head / Hand / Foot pages with section, pattern, ink, glow and glossy per slot, Save / Replace / Remove, player or console target.
+
 ## 0.8.0
 
 * The boolean field ``gloss`` in tattoos isn't used anymore, it has been replaced by two new float fields, ``glossiness`` and ``specularstrength``.
