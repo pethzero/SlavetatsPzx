@@ -1,5 +1,17 @@
 # Changes
 
+## SlavetatsUIPzx UI v4.0 (tag `ui-v4-0`)
+
+* **Camera framing on open**: the character is centered in the screen area right of the browser, worked out from the
+  panel width, the FOV and the camera distance, so there is nothing to adjust before browsing. Starts at a full-body
+  zoom and height (`fOpenZoom`, `fOpenHeight`); `bAutoFrame`, `fCameraExtraShift` replace the fixed `fCameraShift`.
+* **Recenter** button next to Refresh: back to the starting shot after orbiting, panning or zooming.
+* **Slot editor footer**: the selected pattern and the slot's status share one row, and **Back** (was `< All slots`) sits on the right of the action row, freeing a row for the pattern grid.
+* **Group chips**: the strip is sized to whole rows (up to 3, then it scrolls), so the last row is never cut off, with
+  a divider before the patterns.
+* README: credits [slavetats-ui](https://github.com/momoyuki/slavetats-ui) by momoyuki as the UI's inspiration, and
+  points players on other game versions to it (this build targets 1.5.97).
+
 ## SlavetatsUIPzx UI v3.1 (tag `ui-v3-1`)
 
 * **Renamed SlavetatsPzx -> SlavetatsUIPzx**: the DLL (`SlavetatsUIPzx.dll`), the menu section, the settings file

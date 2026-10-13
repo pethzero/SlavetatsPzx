@@ -10,6 +10,12 @@ Papyrus API are SlaveTatsNG's, so mods that use SlaveTats keep working. Slavetat
 
 Both read and write the same SlaveTats records as the MCM (`.SlaveTats.applied`), so everything stays in sync.
 
+> **UI inspired by [slavetats-ui](https://github.com/momoyuki/slavetats-ui) by momoyuki**, the prototype this design
+> grew from.
+>
+> **This build targets Skyrim SE 1.5.97.** Playing another version (AE 1.6.x, VR...)?
+> **[Use slavetats-ui instead](https://github.com/momoyuki/slavetats-ui).**
+
 ## Features
 
 ### Tattoo Browser
@@ -31,6 +37,7 @@ Both read and write the same SlaveTats records as the MCM (`.SlaveTats.applied`)
   | Middle drag | Move the camera left/right/up/down |
   | Wheel | Zoom |
 
+  **Recenter** (next to Refresh) goes back to the starting shot: camera in front, character centered beside the panel.
   Closing the browser puts the camera, zoom and the character's heading back where they were.
 
 ### Mod Control Panel (SKSE Menu Framework)
@@ -51,14 +58,14 @@ Read these before installing. **Back up your saves** the first time you use it.
 
 ### Camera
 
-The Tattoo Browser takes over the third-person camera while it is open (orbit, tilt, zoom, the sideways shift that
-puts the character beside the panel) and puts it back when it closes.
+The Tattoo Browser takes over the third-person camera while it is open (orbit, tilt, zoom, the automatic framing that
+centers the character beside the panel) and puts it back when it closes.
 
 * **SmoothCam**: supported. The browser borrows the camera through SmoothCam's own API while it is open and hands it
   back afterwards, so the two don't fight. Check `SlavetatsUIPzx.log` for `got the SmoothCam interface`.
 * **Other camera mods** (Improved Camera, True Directional Movement's camera options, Customizable Camera, ...) have
   no such API and may still move the camera at the same time: jitter, a camera that drifts, or a shot that ends up in
-  the wrong place. If that happens, set `fCameraShift = 0`, or turn the other mod's camera features off while
+  the wrong place. If that happens, set `bAutoFrame = false`, or turn the other mod's camera features off while
   browsing.
 * **Don't open the browser** in combat, on horseback, while sitting or crafting, or during scenes and animations
   (OStim, SexLab and the like). Those modes own the camera and the character's heading, and the browser fights them.
@@ -85,7 +92,8 @@ puts the character beside the panel) and puts it back when it closes.
 
 ## Requirements
 
-* Skyrim SE 1.5.97 / AE, with [SKSE](https://skse.silverlock.org/)
+* Skyrim SE **1.5.97**, with [SKSE](https://skse.silverlock.org/). For other versions use
+  [slavetats-ui](https://github.com/momoyuki/slavetats-ui).
 * [Address Library for SKSE Plugins](https://www.nexusmods.com/skyrimspecialedition/mods/32444)
 * [JContainers](https://www.nexusmods.com/skyrimspecialedition/mods/16495)
 * [RaceMenu](https://www.nexusmods.com/skyrimspecialedition/mods/19080) (SKEE)
@@ -120,9 +128,12 @@ After installing or removing tattoo packs, press **Add/remove tattoos** on the S
 
 ```ini
 [Browser]
-iHotkey = 0           ; DirectInput scan code of the browser hotkey, 0 = none
-fCameraShift = 60     ; sideways camera offset while the browser is open; negative = other side, 0 = off
-bPreview = false      ; hovering a pattern shows it on the character without saving
+iHotkey = 0              ; DirectInput scan code of the browser hotkey, 0 = none
+bPreview = false         ; hovering a pattern shows it on the character without saving
+bAutoFrame = true        ; center the character in the area right of the browser when it opens
+fCameraExtraShift = 0    ; extra sideways camera offset (the whole offset when bAutoFrame = false)
+fOpenZoom = 0.2          ; zoom the camera starts at: 0 = closest, 1 = farthest, -1 = keep the current zoom
+fOpenHeight = -25        ; camera height the browser starts at (negative = lower), so the whole body is in shot
 ```
 
 SlaveTatsNG's own settings stay in `Data/SKSE/Plugins/SlaveTatsNG/SlaveTatsNG.ini`.
@@ -158,6 +169,7 @@ build.bat release "D:\MO2\mods\SlavetatsUIPzx"   # also copy the DLL/PDB + confi
 
 ## Credits
 
+* [slavetats-ui](https://github.com/momoyuki/slavetats-ui) by momoyuki: the UI prototype this design is inspired by
 * [SlaveTatsNG](https://github.com/nopse0/SlaveTatsNG) by nopse0, and the original SlaveTats
 * [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3) by QTR-Modding
 * FLICK by Fuzzles

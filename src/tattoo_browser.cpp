@@ -36,7 +36,11 @@ namespace slavetats_ng
 			// ------------------------------ Settings -------------------------------------------------------------
 
 			std::atomic<std::uint32_t> Hotkey = 0;
-			float                      CameraShift = 60.0f;  // sideways camera offset while open; negative flips the side
+			// Camera framing when the browser opens: the character is centered in the screen area right of the panel
+			bool  AutoFrame = true;      // work the sideways shift out from the panel width, FOV and camera distance
+			float CameraShift = 0.0f;    // extra sideways offset on top of that (or the whole offset with AutoFrame off)
+			float OpenZoom = 0.2f;       // third-person zoom to start at (0 = closest, 1 = farthest), < 0 = keep the current one
+			float OpenHeight = -25.0f;   // camera height offset to start at, so the whole body is in shot
 			bool                       PreviewMode = false;  // clicking a pattern shows it on the character without saving
 			bool                       Available = false;
 
@@ -49,7 +53,10 @@ namespace slavetats_ng
 				const char*     file = std::filesystem::exists(kSettingsFile, ec) ? kSettingsFile : kOldSettingsFile;
 				if (ini.LoadFile(file) >= 0) {
 					Hotkey = static_cast<std::uint32_t>(ini.GetLongValue("Browser", "iHotkey", 0));
-					CameraShift = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraShift", CameraShift));
+					AutoFrame = ini.GetBoolValue("Browser", "bAutoFrame", AutoFrame);
+					CameraShift = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraExtraShift", CameraShift));
+					OpenZoom = static_cast<float>(ini.GetDoubleValue("Browser", "fOpenZoom", OpenZoom));
+					OpenHeight = static_cast<float>(ini.GetDoubleValue("Browser", "fOpenHeight", OpenHeight));
 					PreviewMode = ini.GetBoolValue("Browser", "bPreview", PreviewMode);
 				}
 				logger::info("Tattoo Browser: hotkey {:#x}, camera shift {}", Hotkey.load(), CameraShift);
@@ -62,8 +69,15 @@ namespace slavetats_ng
 				ini.LoadFile(kSettingsFile);  // keep anything else in the file
 				ini.SetLongValue("Browser", "iHotkey", static_cast<long>(Hotkey.load()),
 					"; DirectInput scan code of the Tattoo Browser hotkey, 0 = none (set it in the menu: Setup > Tattoo Browser)", true);
-				ini.SetDoubleValue("Browser", "fCameraShift", CameraShift,
-					"; Moves the camera sideways while the browser is open so the character stands beside it. Negative = other side, 0 = off");
+				ini.Delete("Browser", "fCameraShift");  // before v4.0: a fixed offset, now worked out by bAutoFrame
+				ini.SetBoolValue("Browser", "bAutoFrame", AutoFrame,
+					"; Center the character in the screen area right of the browser (from the panel width, FOV and camera distance)");
+				ini.SetDoubleValue("Browser", "fCameraExtraShift", CameraShift,
+					"; Extra sideways camera offset on top of bAutoFrame (the whole offset when bAutoFrame = false). Negative = other side");
+				ini.SetDoubleValue("Browser", "fOpenZoom", OpenZoom,
+					"; Zoom the camera starts at when the browser opens: 0 = closest, 1 = farthest, -1 = keep the current zoom");
+				ini.SetDoubleValue("Browser", "fOpenHeight", OpenHeight,
+					"; Camera height offset the browser starts at (negative = lower), so the whole body is in shot");
 				ini.SetBoolValue("Browser", "bPreview", PreviewMode,
 					"; Clicking a pattern shows it on the character right away, without saving (Save/Replace keeps it)");
 				if (ini.SaveFile(kSettingsFile) < 0)
@@ -418,6 +432,35 @@ namespace slavetats_ng
 			std::atomic<float> PanX = 0.0f;       // camera slide sideways (middle drag, horizontal)
 			std::atomic<float> PanZ = 0.0f;       // camera slide up/down (middle drag, vertical)
 			std::atomic<float> ZoomDelta = 0.0f;  // mouse wheel since opening
+			std::atomic<float> PanelFraction = 0.466f;  // panel width / screen width, from the render thread
+
+			// Back to the opening shot: camera in front, character centered beside the panel and facing the camera
+			void Recenter()
+			{
+				Turn = 0.0f;
+				Orbit = 0.0f;
+				Pitch = 0.0f;
+				PanX = 0.0f;
+				PanZ = 0.0f;
+				ZoomDelta = 0.0f;
+			}
+
+			// Sideways camera offset that puts the character in the middle of the area right of the panel: that
+			// spot is panelWidth/2 right of the screen center, and at distance d the half screen is d*tan(fov/2) wide
+			float FramingShift(RE::PlayerCharacter* a_player)
+			{
+				if (!AutoFrame)
+					return CameraShift;
+				auto camera = RE::PlayerCamera::GetSingleton();
+				if (!camera || !camera->cameraRoot)
+					return CameraShift;
+				RE::NiPoint3 eye = camera->cameraRoot->world.translate;
+				RE::NiPoint3 body = a_player->GetPosition();
+				body.z += a_player->GetHeight() * 0.5f;
+				float distance = eye.GetDistance(body);
+				float halfWidth = distance * std::tan(camera->worldFOV * 0.5f * 3.14159265f / 180.0f);
+				return PanelFraction.load(std::memory_order_relaxed) * halfWidth + CameraShift;
+			}
 
 			void AddTo(std::atomic<float>& a_value, float a_delta, float a_min = -1e9f, float a_max = 1e9f)
 			{
@@ -469,10 +512,10 @@ namespace slavetats_ng
 				state->freeRotationEnabled = true;
 				state->freeRotation.x = kFrontYaw - turn + Orbit.load(std::memory_order_relaxed);
 				state->freeRotation.y = Pitch.load(std::memory_order_relaxed);
-				state->posOffsetExpected.x = Saved.offsetX - CameraShift + PanX.load(std::memory_order_relaxed);
-				state->posOffsetExpected.z = Saved.offsetZ + PanZ.load(std::memory_order_relaxed);
-				if (float zoom = ZoomDelta.load(std::memory_order_relaxed); zoom != 0.0f)
-					state->targetZoomOffset = std::clamp(Saved.zoom + zoom, 0.0f, 1.0f);
+				state->posOffsetExpected.x = Saved.offsetX - FramingShift(player) + PanX.load(std::memory_order_relaxed);
+				state->posOffsetExpected.z = Saved.offsetZ + OpenHeight + PanZ.load(std::memory_order_relaxed);
+				float zoomStart = OpenZoom >= 0.0f ? OpenZoom : Saved.zoom;
+				state->targetZoomOffset = std::clamp(zoomStart + ZoomDelta.load(std::memory_order_relaxed), 0.0f, 1.0f);
 			}
 
 			// ------------------------------ SmoothCam ------------------------------------------------------------
@@ -516,12 +559,7 @@ namespace slavetats_ng
 					Saved.wasFirstPerson = camera->IsInFirstPerson();
 					camera->ForceThirdPerson();
 				}
-				Turn = 0.0f;
-				Orbit = 0.0f;
-				Pitch = 0.0f;
-				PanX = 0.0f;
-				PanZ = 0.0f;
-				ZoomDelta = 0.0f;
+				Recenter();
 				TurntableHeld = true;
 				ApplyTurntable();
 				FUCK::ForceCursor(true);  // no game menu is open, so nothing else shows a cursor
@@ -567,6 +605,9 @@ namespace slavetats_ng
 					tattoo_thumbs::Pump();
 					lastPump_ = tattoo_thumbs::PumpCount();
 				}
+
+				if (auto display = FUCK::GetDisplaySize(); display.x > 0.0f)
+					PanelFraction.store(GetDefaultSize().x / display.x, std::memory_order_relaxed);
 
 				// FLICK restores the geometry it saved for this Id: put ours back on the first frame after opening
 				if (fresh_ || FUCK::IsWindowAppearing()) {
@@ -665,6 +706,11 @@ namespace slavetats_ng
 				if (GhostButton("Refresh"))
 					LoadTarget(TargetMode::kCurrent);
 				FUCK::EndDisabled();
+				FUCK::SameLine();
+				if (GhostButton("Recenter"))
+					Recenter();
+				if (FUCK::IsItemHovered())
+					Tooltip("Back to the starting shot: camera in front, character centered beside the panel.\nThe starting zoom and height are fOpenZoom / fOpenHeight in SlavetatsUIPzx.ini.");
 				if (Working > 0) {
 					FUCK::SameLine();
 					FUCK::TextColored(kPending, "%s", "(working...)");
@@ -812,35 +858,66 @@ namespace slavetats_ng
 					return;
 				}
 
-				// Chips wrap onto as many rows as needed; the strip scrolls after ~3 rows
-				float row_h = FUCK::GetFrameHeight() + 6.0f;
-				FUCK::BeginChild("tb_groups", ImVec2(0.0f, row_h * 3.0f + 4.0f), false, 0);
-				float left = FUCK::GetCursorScreenPos().x;
-				float right = left + FUCK::GetContentRegionAvail().x;
-				float x = left;
-				int   i = 0;
-				for (auto& [name, tattoos] : sections) {
-					string label = fmt::format("{} ({})", name, tattoos.size());
-					float  chip_w = FUCK::CalcTextSize(label.c_str()).x + 20.0f;
-					if (i > 0) {
-						if (x + 6.0f + chip_w > right) {
-							x = left;  // next row
-						} else {
-							FUCK::SameLine(0.0f, 6.0f);
-							x += 6.0f;
+				// Chips are laid out by hand so the row count is known before drawing: the strip is sized to whole
+				// rows (up to 3, then it scrolls), so the last visible row is never cut in half
+				const float gap = 6.0f;
+				const int   kMaxRows = 3;
+				float       frame = FUCK::GetFrameHeight();
+				float       pad = FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x;
+
+				struct ChipPos
+				{
+					const string* name;
+					string        label;
+					float         x;
+					int           row;
+				};
+				auto layout = [&](float a_width, std::vector<ChipPos>& a_out) {
+					a_out.clear();
+					float x = 0.0f;
+					int   row = 0;
+					for (auto& [name, tattoos] : sections) {
+						string label = fmt::format("{} ({})", name, tattoos.size());
+						float  w = FUCK::CalcTextSize(label.c_str()).x + pad * 2.0f;
+						if (x > 0.0f && x + w > a_width) {
+							x = 0.0f;
+							row++;
 						}
+						a_out.push_back({ &name, std::move(label), x, row });
+						x += w + gap;
 					}
-					FUCK::PushID(i++);
-					if (Chip(label.c_str(), IEquals(a_slot.browse, name))) {
-						a_slot.browse = name;
+					return row + 1;
+				};
+
+				std::vector<ChipPos> chips;
+				float                width = FUCK::GetContentRegionAvail().x;
+				int                  rows = layout(width, chips);
+				if (rows > kMaxRows)  // it will scroll: lay out again without the scrollbar's width
+					rows = layout(width - FUCK::GetStyleVar(ImGuiStyleVar_ScrollbarSize) - gap, chips);
+				int   visible = std::min(rows, kMaxRows);
+				float step = frame + gap;
+
+				FUCK::BeginChild("tb_groups", ImVec2(0.0f, visible * frame + (visible - 1) * gap), false, 0);
+				ImVec2 origin = FUCK::GetCursorScreenPos();
+				for (int i = 0; i < static_cast<int>(chips.size()); i++) {
+					auto& chip = chips[i];
+					FUCK::SetCursorScreenPos(ImVec2(origin.x + chip.x, origin.y + chip.row * step));
+					FUCK::PushID(i);
+					if (Chip(chip.label.c_str(), IEquals(a_slot.browse, *chip.name))) {
+						a_slot.browse = *chip.name;
 						search_[0] = '\0';
 					}
 					FUCK::PopID();
-					x += FUCK::GetItemRectMax().x - FUCK::GetItemRectMin().x;
 				}
+				// Claim the whole strip as one item so the child scrolls over every row
+				FUCK::SetCursorScreenPos(origin);
+				FUCK::Dummy(ImVec2(1.0f, rows * frame + (rows - 1) * gap));
 				FUCK::EndChild();
-			}
 
+				// Divider between the groups and the patterns
+				FUCK::Spacing();
+				FUCK::Separator();
+			}
 			bool BrowserWindow::DrawPatternTile(const TattooDef& a_tattoo, const string& a_section, bool a_selected, bool a_applied,
 				bool a_show_section, ImVec2 a_pos, float a_tile, bool& a_hovered)
 			{
@@ -943,28 +1020,11 @@ namespace slavetats_ng
 				auto& slot = Slots[a_area][a_index];
 				auto& applied = slot.applied;
 
-				if (GhostButton("< All slots")) {
-					StopPreview();
-					editing_ = -1;
-					return;
-				}
-				FUCK::SameLine();
-				FUCK::AlignTextToFramePadding();
-				FUCK::Text("Slot %d", a_index + 1);
-				FUCK::SameLine();
-				if (applied.kind == SlotKind::kTattoo) {
-					FUCK::TextColored(applied.locked ? kDanger : kOk, "%s", applied.locked ? "Locked" : "Applied");
-					FUCK::SameLine();
-					FUCK::TextDisabled("%s / %s", applied.section.c_str(), applied.name.c_str());
-				} else {
-					FUCK::TextDisabled("%s", "Empty");
-				}
-				FUCK::Separator();
-
 				FUCK::BeginDisabled(applied.locked);
 				DrawGroups(a_area, slot);
 				FUCK::Spacing();
 
+				// Footer below the grid: selection | slot status, colors, actions (with Back on the right)
 				float frame = FUCK::GetFrameHeight();
 				float footer = frame * 3.0f + FUCK::GetTextLineHeight() * 2.0f + 40.0f;
 				float grid_h = std::max(160.0f, FUCK::GetContentRegionAvail().y - footer);
@@ -979,6 +1039,20 @@ namespace slavetats_ng
 					FUCK::TextDisabled("%s%s%s", slot.section.c_str(), selected->credit.empty() ? "" : "  -  by ", selected->credit.c_str());
 				} else {
 					FUCK::TextDisabled("%s", applied.kind == SlotKind::kTattoo ? "No pattern selected" : "Click a pattern to select it");
+				}
+
+				// What the slot holds now, on the same row
+				FUCK::SameLine();
+				FUCK::TextDisabled("%s", "|");
+				FUCK::SameLine();
+				FUCK::Text("Slot %d", a_index + 1);
+				FUCK::SameLine();
+				if (applied.kind == SlotKind::kTattoo) {
+					FUCK::TextColored(applied.locked ? kDanger : kOk, "%s", applied.locked ? "Locked" : "Applied");
+					FUCK::SameLine();
+					FUCK::TextDisabled("%s / %s", applied.section.c_str(), applied.name.c_str());
+				} else {
+					FUCK::TextDisabled("%s", "Empty");
 				}
 
 				ColorField("Ink", slot.ink, "Pick the ink color for this tattoo.");
@@ -1018,6 +1092,24 @@ namespace slavetats_ng
 				}
 				FUCK::EndDisabled();
 				FUCK::EndDisabled();  // locked
+
+				// Back to the slot overview, right-aligned on the action row (outside the disabled scopes: always usable)
+				{
+					const char* back = "Back";
+					float       w = FUCK::CalcTextSize(back).x + FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x * 2.0f;
+					FUCK::SameLine();
+					auto cursor = FUCK::GetCursorScreenPos();
+					float room = FUCK::GetContentRegionAvail().x;
+					if (room >= w)
+						FUCK::SetCursorScreenPos(ImVec2(cursor.x + room - w, cursor.y));
+					else
+						FUCK::Dummy(ImVec2(0.0f, 0.0f));  // ends the row, the button goes to the next line
+					if (GhostButton(back)) {
+						StopPreview();
+						editing_ = -1;
+						return;
+					}
+				}
 
 				if (applied.locked)
 					FUCK::TextDisabled("%s", "Locked: this tattoo can only be removed by the mod that applied it.");
