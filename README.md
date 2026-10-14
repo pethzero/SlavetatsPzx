@@ -27,8 +27,8 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
 
 ### Tattoo Browser
 
-* **Docked to the left edge**, the character centered in the space beside it. The camera frames the shot by itself
-  when the browser opens, so there is nothing to set up first.
+* **Docked to the left edge**, the character standing in the space beside it. The camera moves to the shot set in
+  Setup > Camera when the browser opens, so there is nothing to adjust first.
 * **The world keeps running.** No game menu is opened underneath, so nothing can be clicked or equipped by accident,
   and the game never gets a click while the browser is open.
 * **Slot overview**: Body / Face / Hands / Feet tabs, every overlay slot as a card with its thumbnail (2 x 3 per page).
@@ -36,7 +36,7 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
 * **Slot editor**: group chips (with pattern counts), a search box across every group, and a thumbnail grid of the
   patterns. Below the grid, one row tells you what you picked and what the slot holds now, then Ink / Glow / Glossy,
   then **Save / Replace / Remove / Undo** with **Back** on the right.
-* **Preview** (turned on in Setup): hover a pattern and it appears on the character, like trying clothes on. Nothing is
+* **Preview** (on by default, toggle in Setup): hover a pattern and it appears on the character, like trying clothes on. Nothing is
   saved until Save/Replace; Undo, Back or closing the browser puts the saved tattoos back.
 * **Camera and character**, with the mouse outside the panel:
 
@@ -54,6 +54,8 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
 
 * **Setup**: choose the target (the player, or the actor selected in the console), rescan tattoo packs
   (*Add/remove tattoos*), open the Tattoo Browser, set its hotkey, turn Preview on or off.
+* **Setup > Camera**: the browser's camera, with live sliders like Show Player In Inventory's: *Offset X / Y / Z*,
+  *Zoom*, *FOV*, *Rotation Z* (around the character), *Rotation X* (tilt), then **Save Settings** (writes the ini) and **Reset Defaults**.
 * **Body / Head / Hand / Foot** pages: slot list with thumbnails and the same editor as the browser.
 
 ### Thumbnails
@@ -75,7 +77,7 @@ when it closes.
   back afterwards, so the two don't fight. `SlavetatsUIPzx.log` says `got the SmoothCam interface` when it is found.
 * **Other camera mods** (Improved Camera, True Directional Movement's camera options, Customizable Camera, ...) have
   no such API and may still move the camera at the same time: jitter, a drifting camera, or a shot that ends up in the
-  wrong place. If that happens, set `bAutoFrame = false`, or turn the other mod's camera features off while browsing.
+  wrong place. If that happens, turn the other mod's camera features off while browsing.
 * **Don't open the browser** in combat, on horseback, while sitting or crafting, or during scenes and animations
   (OStim, SexLab and the like). Those modes own the camera and the character's heading, and the browser fights them.
 * **If the camera looks wrong after closing** (stuck to one side, odd zoom), open and close the browser once more,
@@ -121,8 +123,8 @@ Without FLICK or SKSE Menu Framework the plugin still works, as SlaveTatsNG does
 * **From SlavetatsPzx** (before ui-v3-1): remove the old `SlavetatsPzx.dll` and `.pdb`, for the same reason. Your
   browser settings carry over from `SlavetatsPzx.ini`, and the old thumbnail folder `Data/SKSE/Plugins/SlavetatsPzx/`
   can be deleted.
-* **From ui-v3 / ui-v3-1**: the fixed `fCameraShift` is gone (the camera frames itself now) and is removed from the ini
-  the next time the menu saves it. If you had changed `fOpenZoom`, check it against the default below.
+* **From ui-v3 / ui-v4-0**: `fCameraShift`, `bAutoFrame`, `fCameraExtraShift` and `fOpenHeight` are replaced by the
+  Setup > Camera offsets and removed from the ini the next time the menu saves it.
 
 ## Usage
 
@@ -139,18 +141,19 @@ After installing or removing tattoo packs, press **Add/remove tattoos** on the S
 
 ```ini
 [Browser]
-iHotkey = 0              ; DirectInput scan code of the browser hotkey, 0 = none (set it in Setup)
-bPreview = false         ; hovering a pattern shows it on the character without saving (Setup checkbox)
-bAutoFrame = true        ; center the character in the area right of the browser when it opens
-fCameraExtraShift = 0    ; extra sideways camera offset (the whole offset when bAutoFrame = false), negative = other side
-fOpenZoom = 0.2          ; zoom the camera starts at: 0 = closest, 1 = farthest, -1 = keep the current zoom
-fOpenHeight = -25        ; camera height the browser starts at (negative = lower)
+iHotkey = 0             ; DirectInput scan code of the browser hotkey, 0 = none (set it in Setup)
+bPreview = true         ; hovering a pattern shows it on the character without saving (Setup checkbox)
+fCameraOffsetX = -72.5  ; camera sideways while browsing: negative moves it left, the character stands right [Offset X]
+fCameraOffsetY = 80     ; camera forward/back                                                           [Offset Y]
+fCameraOffsetZ = -13.5  ; camera up/down                                                                 [Offset Z]
+fOpenZoom = 0.2         ; zoom the camera starts at: 0 = closest, 1 = farthest, -1 = keep current       [Zoom]
+fCameraFOV = 55         ; field of view while browsing, 0 = keep the game's                             [FOV]
+fCameraRotation = -20   ; degrees the camera sits around the character: 0 = in front, 180 = behind     [Rotation Z]
+fCameraPitch = 10       ; degrees the camera tilts: positive looks down from above, negative from below [Rotation X]
 ```
 
-**Tuning the starting shot**: too far away, lower `fOpenZoom`; head or feet cut off, change `fOpenHeight`; character
-not centered beside the panel, nudge it with `fCameraExtraShift`. **Recenter** uses the same values, so edit the ini,
-then reopen the browser to try them.
-
+The camera values are easiest to set in **Setup > Camera**: the sliders apply live (an open browser follows at once),
+**Save Settings** writes them here, **Reset Defaults** puts them back. **Recenter** returns to them.
 SlaveTatsNG's own settings stay in `Data/SKSE/Plugins/SlaveTatsNG/SlaveTatsNG.ini`.
 
 ## Building

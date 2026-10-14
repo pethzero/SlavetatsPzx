@@ -36,12 +36,16 @@ namespace slavetats_ng
 			// ------------------------------ Settings -------------------------------------------------------------
 
 			std::atomic<std::uint32_t> Hotkey = 0;
-			// Camera framing when the browser opens: the character is centered in the screen area right of the panel
-			bool  AutoFrame = true;      // work the sideways shift out from the panel width, FOV and camera distance
-			float CameraShift = 0.0f;    // extra sideways offset on top of that (or the whole offset with AutoFrame off)
-			float OpenZoom = 0.2f;       // third-person zoom to start at (0 = closest, 1 = farthest), < 0 = keep the current one
-			float OpenHeight = -25.0f;   // camera height offset to start at, so the whole body is in shot
-			bool                       PreviewMode = false;  // clicking a pattern shows it on the character without saving
+			// Camera while the browser is open (Setup > Camera), added to the normal third-person camera like Show
+			// Player In Inventory's offsets. Defaults are the user's tuned values (CameraSettings in the header).
+			float OffsetX = CameraSettings{}.offsetX;  // sideways: negative moves the camera left, the character stands right
+			float OffsetY = CameraSettings{}.offsetY;  // forward/back
+			float OffsetZ = CameraSettings{}.offsetZ;  // up/down
+			float OpenZoom = CameraSettings{}.zoom;    // 0 = closest, 1 = farthest, < 0 = keep the current zoom
+			float CameraFOV = CameraSettings{}.fov;    // 0 = keep the game's
+			float CameraRotation = CameraSettings{}.rotation;  // degrees around the character, 0 = in front
+			float CameraPitch = CameraSettings{}.pitch;        // degrees of tilt, positive looks down from above
+			bool                       PreviewMode = true;   // clicking a pattern shows it on the character without saving
 			bool                       Available = false;
 
 			void LoadSettings()
@@ -53,31 +57,36 @@ namespace slavetats_ng
 				const char*     file = std::filesystem::exists(kSettingsFile, ec) ? kSettingsFile : kOldSettingsFile;
 				if (ini.LoadFile(file) >= 0) {
 					Hotkey = static_cast<std::uint32_t>(ini.GetLongValue("Browser", "iHotkey", 0));
-					AutoFrame = ini.GetBoolValue("Browser", "bAutoFrame", AutoFrame);
-					CameraShift = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraExtraShift", CameraShift));
+					OffsetX = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraOffsetX", OffsetX));
+					OffsetZ = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraOffsetZ", OffsetZ));
 					OpenZoom = static_cast<float>(ini.GetDoubleValue("Browser", "fOpenZoom", OpenZoom));
-					OpenHeight = static_cast<float>(ini.GetDoubleValue("Browser", "fOpenHeight", OpenHeight));
 					PreviewMode = ini.GetBoolValue("Browser", "bPreview", PreviewMode);
+					OffsetY = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraOffsetY", OffsetY));
+					CameraFOV = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraFOV", CameraFOV));
+					CameraRotation = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraRotation", CameraRotation));
+					CameraPitch = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraPitch", CameraPitch));
 				}
-				logger::info("Tattoo Browser: hotkey {:#x}, camera shift {}", Hotkey.load(), CameraShift);
+				logger::info("Tattoo Browser: hotkey {:#x}, camera offset ({}, {}, {}), zoom {}, fov {}", Hotkey.load(), OffsetX, OffsetY, OffsetZ, OpenZoom, CameraFOV);
 			}
 
-			void SaveSettings()
+			void WriteIni()
 			{
 				CSimpleIniA ini;
 				ini.SetUnicode();
 				ini.LoadFile(kSettingsFile);  // keep anything else in the file
 				ini.SetLongValue("Browser", "iHotkey", static_cast<long>(Hotkey.load()),
 					"; DirectInput scan code of the Tattoo Browser hotkey, 0 = none (set it in the menu: Setup > Tattoo Browser)", true);
-				ini.Delete("Browser", "fCameraShift");  // before v4.0: a fixed offset, now worked out by bAutoFrame
-				ini.SetBoolValue("Browser", "bAutoFrame", AutoFrame,
-					"; Center the character in the screen area right of the browser (from the panel width, FOV and camera distance)");
-				ini.SetDoubleValue("Browser", "fCameraExtraShift", CameraShift,
-					"; Extra sideways camera offset on top of bAutoFrame (the whole offset when bAutoFrame = false). Negative = other side");
-				ini.SetDoubleValue("Browser", "fOpenZoom", OpenZoom,
-					"; Zoom the camera starts at when the browser opens: 0 = closest, 1 = farthest, -1 = keep the current zoom");
-				ini.SetDoubleValue("Browser", "fOpenHeight", OpenHeight,
-					"; Camera height offset the browser starts at (negative = lower), so the whole body is in shot");
+				// Keys from before v4.1 (automatic framing): replaced by the Setup > Camera offsets
+				for (auto old : { "fCameraShift", "bAutoFrame", "fCameraExtraShift", "fOpenHeight" })
+					ini.Delete("Browser", old);
+				ini.SetDoubleValue("Browser", "fCameraOffsetX", OffsetX,
+					"; Camera while the browser is open (Setup > Camera). Sideways: negative moves the camera left");
+				ini.SetDoubleValue("Browser", "fCameraOffsetY", OffsetY, "; Forward / back");
+				ini.SetDoubleValue("Browser", "fCameraOffsetZ", OffsetZ, "; Up / down");
+				ini.SetDoubleValue("Browser", "fOpenZoom", OpenZoom, "; Zoom: 0 = closest, 1 = farthest, -1 = keep the current zoom");
+				ini.SetDoubleValue("Browser", "fCameraFOV", CameraFOV, "; Field of view while browsing, 0 = keep the game's");
+				ini.SetDoubleValue("Browser", "fCameraRotation", CameraRotation, "; Degrees the camera sits around the character: 0 = in front, 180 = behind");
+				ini.SetDoubleValue("Browser", "fCameraPitch", CameraPitch, "; Degrees the camera tilts: positive looks down from above, negative from below");
 				ini.SetBoolValue("Browser", "bPreview", PreviewMode,
 					"; Clicking a pattern shows it on the character right away, without saving (Save/Replace keeps it)");
 				if (ini.SaveFile(kSettingsFile) < 0)
@@ -432,9 +441,8 @@ namespace slavetats_ng
 			std::atomic<float> PanX = 0.0f;       // camera slide sideways (middle drag, horizontal)
 			std::atomic<float> PanZ = 0.0f;       // camera slide up/down (middle drag, vertical)
 			std::atomic<float> ZoomDelta = 0.0f;  // mouse wheel since opening
-			std::atomic<float> PanelFraction = 0.466f;  // panel width / screen width, from the render thread
 
-			// Back to the opening shot: camera in front, character centered beside the panel and facing the camera
+			// Back to the opening shot: camera in front, character beside the panel and facing the camera
 			void Recenter()
 			{
 				Turn = 0.0f;
@@ -444,24 +452,6 @@ namespace slavetats_ng
 				PanZ = 0.0f;
 				ZoomDelta = 0.0f;
 			}
-
-			// Sideways camera offset that puts the character in the middle of the area right of the panel: that
-			// spot is panelWidth/2 right of the screen center, and at distance d the half screen is d*tan(fov/2) wide
-			float FramingShift(RE::PlayerCharacter* a_player)
-			{
-				if (!AutoFrame)
-					return CameraShift;
-				auto camera = RE::PlayerCamera::GetSingleton();
-				if (!camera || !camera->cameraRoot)
-					return CameraShift;
-				RE::NiPoint3 eye = camera->cameraRoot->world.translate;
-				RE::NiPoint3 body = a_player->GetPosition();
-				body.z += a_player->GetHeight() * 0.5f;
-				float distance = eye.GetDistance(body);
-				float halfWidth = distance * std::tan(camera->worldFOV * 0.5f * 3.14159265f / 180.0f);
-				return PanelFraction.load(std::memory_order_relaxed) * halfWidth + CameraShift;
-			}
-
 			void AddTo(std::atomic<float>& a_value, float a_delta, float a_min = -1e9f, float a_max = 1e9f)
 			{
 				a_value.store(std::clamp(a_value.load(std::memory_order_relaxed) + a_delta, a_min, a_max), std::memory_order_relaxed);
@@ -475,8 +465,10 @@ namespace slavetats_ng
 				bool         freeRotationEnabled = false;
 				RE::NiPoint2 freeRotation{};
 				float        offsetX = 0.0f;
+				float        offsetY = 0.0f;
 				float        offsetZ = 0.0f;
 				float        zoom = 0.0f;
+				float        fov = 0.0f;
 			};
 			SavedCamera Saved;
 
@@ -503,17 +495,26 @@ namespace slavetats_ng
 					Saved.freeRotationEnabled = state->freeRotationEnabled;
 					Saved.freeRotation = state->freeRotation;
 					Saved.offsetX = state->posOffsetExpected.x;
+					Saved.offsetY = state->posOffsetExpected.y;
 					Saved.offsetZ = state->posOffsetExpected.z;
 					Saved.zoom = state->targetZoomOffset;
+					if (auto camera = RE::PlayerCamera::GetSingleton())
+						Saved.fov = camera->worldFOV;
 				}
 				float turn = Turn.load(std::memory_order_relaxed);
 				player->SetRotationZ(Saved.heading + turn);
 				// Free rotation is relative to the character's heading: subtracting the turn keeps the camera still
 				state->freeRotationEnabled = true;
-				state->freeRotation.x = kFrontYaw - turn + Orbit.load(std::memory_order_relaxed);
-				state->freeRotation.y = Pitch.load(std::memory_order_relaxed);
-				state->posOffsetExpected.x = Saved.offsetX - FramingShift(player) + PanX.load(std::memory_order_relaxed);
-				state->posOffsetExpected.z = Saved.offsetZ + OpenHeight + PanZ.load(std::memory_order_relaxed);
+				state->freeRotation.x = kFrontYaw - turn + Orbit.load(std::memory_order_relaxed) + CameraRotation * (3.14159265f / 180.0f);
+				state->freeRotation.y = std::clamp(Pitch.load(std::memory_order_relaxed) + CameraPitch * (3.14159265f / 180.0f), -kMaxPitch, kMaxPitch);
+				state->posOffsetExpected.x = Saved.offsetX + OffsetX + PanX.load(std::memory_order_relaxed);
+				state->posOffsetExpected.y = Saved.offsetY + OffsetY;
+				state->posOffsetExpected.z = Saved.offsetZ + OffsetZ + PanZ.load(std::memory_order_relaxed);
+				if (auto camera = RE::PlayerCamera::GetSingleton()) {
+					float fov = CameraFOV > 0.0f ? CameraFOV : Saved.fov;
+					if (fov > 0.0f && camera->worldFOV != fov)
+						camera->worldFOV = fov;
+				}
 				float zoomStart = OpenZoom >= 0.0f ? OpenZoom : Saved.zoom;
 				state->targetZoomOffset = std::clamp(zoomStart + ZoomDelta.load(std::memory_order_relaxed), 0.0f, 1.0f);
 			}
@@ -577,9 +578,12 @@ namespace slavetats_ng
 						state->freeRotationEnabled = Saved.freeRotationEnabled;
 						state->freeRotation = Saved.freeRotation;
 						state->posOffsetExpected.x = Saved.offsetX;
+						state->posOffsetExpected.y = Saved.offsetY;
 						state->posOffsetExpected.z = Saved.offsetZ;
 						state->targetZoomOffset = Saved.zoom;
 					}
+					if (auto camera = RE::PlayerCamera::GetSingleton(); camera && Saved.fov > 0.0f)
+						camera->worldFOV = Saved.fov;
 				}
 				if (Saved.wasFirstPerson) {
 					if (auto camera = RE::PlayerCamera::GetSingleton())
@@ -606,8 +610,6 @@ namespace slavetats_ng
 					lastPump_ = tattoo_thumbs::PumpCount();
 				}
 
-				if (auto display = FUCK::GetDisplaySize(); display.x > 0.0f)
-					PanelFraction.store(GetDefaultSize().x / display.x, std::memory_order_relaxed);
 
 				// FLICK restores the geometry it saved for this Id: put ours back on the first frame after opening
 				if (fresh_ || FUCK::IsWindowAppearing()) {
@@ -638,7 +640,9 @@ namespace slavetats_ng
 					if (editing_ >= static_cast<int>(slots.size()))
 						editing_ = -1;
 
-					FUCK::BeginChild("tb_body", ImVec2(0.0f, 0.0f), false, 0);
+					// The editor sizes its grid to fit exactly, so this never needs to scroll; a scrollbar flickering
+					// on at the last pixel would shake the layout the same way
+					FUCK::BeginChild("tb_body", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
 					if (editing_ >= 0)
 						DrawEditor(area_, editing_);
 					else
@@ -710,7 +714,7 @@ namespace slavetats_ng
 				if (GhostButton("Recenter"))
 					Recenter();
 				if (FUCK::IsItemHovered())
-					Tooltip("Back to the starting shot: camera in front, character centered beside the panel.\nThe starting zoom and height are fOpenZoom / fOpenHeight in SlavetatsUIPzx.ini.");
+					Tooltip("Back to the starting shot: camera in front, character beside the panel.\nThe starting shot is set in the menu's Setup > Camera.");
 				if (Working > 0) {
 					FUCK::SameLine();
 					FUCK::TextColored(kPending, "%s", "(working...)");
@@ -977,7 +981,10 @@ namespace slavetats_ng
 				}
 
 				PushCol(ImGuiCol_ChildBg, Rgba(0, 0, 0, 40));
-				FUCK::BeginChild("tb_grid", ImVec2(0.0f, a_height), true, 0);
+				// ⚠ Always show the scrollbar: the column count comes from the width, so a scrollbar that appears only
+				// when the content overflows changes the width, the tile size and the content height, which hides the
+				// scrollbar again - every frame, and the grid shakes
+				FUCK::BeginChild("tb_grid", ImVec2(0.0f, a_height), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
 				if (tiles.empty()) {
 					CenteredHint(searching ? "No pattern matches your search." : "Pick a group above to browse its patterns.");
 				} else {
@@ -1259,15 +1266,36 @@ namespace slavetats_ng
 			PreviewMode = a_enabled;
 			if (!a_enabled)
 				EndPreview();
-			SaveSettings();
+			WriteIni();
 		}
+
+		CameraSettings GetCameraSettings()
+		{
+			return { OffsetX, OffsetY, OffsetZ, OpenZoom, CameraFOV, CameraRotation, CameraPitch };
+		}
+
+		void SetCameraSettings(const CameraSettings& a_settings)
+		{
+			// Plain floats read by the game thread each frame: an open browser follows the new values at once
+			OffsetX = a_settings.offsetX;
+			OffsetY = a_settings.offsetY;
+			OffsetZ = a_settings.offsetZ;
+			OpenZoom = a_settings.zoom;
+			CameraFOV = a_settings.fov;
+			CameraRotation = a_settings.rotation;
+			CameraPitch = a_settings.pitch;
+		}
+
+		CameraSettings DefaultCameraSettings() { return {}; }
+
+		void SaveSettings() { WriteIni(); }
 
 		std::uint32_t GetHotkey() { return Hotkey.load(); }
 
 		void SetHotkey(std::uint32_t a_scanCode)
 		{
 			Hotkey = a_scanCode;
-			SaveSettings();
+			WriteIni();
 		}
 
 		std::string KeyName(std::uint32_t a_scanCode)

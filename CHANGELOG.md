@@ -1,5 +1,15 @@
 # Changes
 
+## SlavetatsUIPzx UI v4.1 (tag `ui-v4-1`)
+
+* **Setup > Camera**, like Show Player In Inventory's settings: live sliders for the browser's camera (Offset X / Y / Z,
+  Zoom, FOV, Rotation Z around the character, Rotation X tilt), with **Save Settings** and **Reset Defaults**. The browser opens at these values and Recenter returns to
+  them. Defaults: X -72.5, Y 80, Z -13.5, zoom 0.2, FOV 55, rotation Z -20, rotation X 10, Preview on.
+* The automatic framing from v4.0 is gone in favour of these fixed offsets; its ini keys (`bAutoFrame`,
+  `fCameraExtraShift`, `fOpenHeight`, `fCameraShift`) are replaced by `fCameraOffsetX/Y/Z`, `fCameraFOV`, `fCameraRotation` and `fCameraPitch`.
+* **Fixed**: the pattern grid shaking. Its scrollbar appeared and disappeared every frame (the column count follows
+  the width the scrollbar takes); the grid now always keeps it, and the editor area never scrolls.
+
 ## SlavetatsUIPzx UI v4.0 (tag `ui-v4-0`)
 
 * **Camera framing on open**: the character is centered in the screen area right of the browser, worked out from the

@@ -688,6 +688,38 @@ namespace slavetats_ng
 					ImGuiMCP::SetTooltip("In the browser, hovering a pattern shows it on the character right away, like trying on clothes.\nNothing is saved until you press Save/Replace; Undo, leaving the slot or closing the browser takes it back off.");
 				ImGuiMCP::SameLine();
 				ImGuiMCP::TextDisabled("%s", "Show patterns on the character while browsing, without saving");
+				// ---- Camera (the browser's framing) ----
+				ImGuiMCP::SeparatorText("Camera");
+				auto cam = tattoo_browser::GetCameraSettings();
+				bool changed = false;
+
+
+				const float slider_w = 260.0f;
+				auto slider = [&](const char* a_label, float* a_value, float a_min, float a_max, const char* a_format, const char* a_tip) {
+					ImGuiMCP::SetNextItemWidth(slider_w);
+					changed |= ImGuiMCP::SliderFloat(a_label, a_value, a_min, a_max, a_format);
+					if (ImGuiMCP::IsItemHovered())
+						ImGuiMCP::SetTooltip("%s", a_tip);
+				};
+				slider("Offset X", &cam.offsetX, -150.0f, 150.0f, "%.1f", "Sideways. Negative moves the camera left, so the character stands right of the browser.");
+				slider("Offset Y", &cam.offsetY, -150.0f, 150.0f, "%.1f", "Forward / back.");
+				slider("Offset Z", &cam.offsetZ, -150.0f, 150.0f, "%.1f", "Up / down. Lower it to get the feet in shot.");
+				slider("Zoom", &cam.zoom, 0.0f, 1.0f, "%.2f", "Distance the camera starts at: 0 = closest, 1 = farthest.");
+				slider("FOV", &cam.fov, 0.0f, 120.0f, cam.fov > 0.0f ? "%.1f" : "Game default", "Field of view while browsing. 0 = keep the game's.");
+				slider("Rotation Z", &cam.rotation, -180.0f, 180.0f, "%.0f deg", "Where the camera sits around the character: 0 = in front, 90 / -90 = the sides, 180 = behind.\nLeft-drag outside the browser still orbits on top of it.");
+				slider("Rotation X", &cam.pitch, -60.0f, 60.0f, "%.0f deg", "Tilts the camera: positive looks down from above, negative looks up from below, 0 = level.\nLeft-drag up/down outside the browser still tilts on top of it.");
+				if (changed)
+					tattoo_browser::SetCameraSettings(cam);  // an open browser follows at once; Recenter uses them too
+
+				if (GhostButton("Save Settings"))
+					tattoo_browser::SaveSettings();
+				if (ImGuiMCP::IsItemHovered())
+					ImGuiMCP::SetTooltip("Write the camera settings (and the rest) to Data/SKSE/Plugins/SlavetatsUIPzx.ini.");
+				ImGuiMCP::SameLine();
+				if (GhostButton("Reset Defaults"))
+					tattoo_browser::SetCameraSettings(tattoo_browser::DefaultCameraSettings());
+				if (ImGuiMCP::IsItemHovered())
+					ImGuiMCP::SetTooltip("Put the camera settings back to their defaults (press Save Settings to keep them).");
 				if (!available)
 					ImGuiMCP::TextColored(ToVec4(kDanger), "%s", "The Tattoo Browser needs FLICK (FUCK.dll), which isn't installed or is too old.");
 			}
