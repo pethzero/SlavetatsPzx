@@ -1,5 +1,18 @@
 # Changes
 
+## SlavetatsUIPzx UI v5.0 (tag `ui-v5-0`)
+
+* **Presets**: a new **PRESET** tab in the Tattoo Browser saves a whole look (every SlaveTats tattoo in every area, with
+  its slot, ink, glow and gloss) into one of **12 preset slots**, and **Load** puts it back on. Loading replaces the
+  current tattoos; **Undo Load** puts them back. Rename and Delete too.
+* **Try a preset on by hovering it**: with Preview on, the whole look shows on the character while the mouse is over
+  a preset (one of yours or a shared one), without saving anything.
+* **Presets page** in the Mod Control Panel, next to Body / Head / Hand / Foot: the same presets and actions.
+* **Shared presets**: presets are JSON files (`Data/SKSE/Plugins/SlavetatsUIPzx/Presets/Preset01.json` ...
+  `Preset12.json`) you can send to someone. Files dropped in `Presets/Shared/` show in the tab, ready to load or copy
+  into a slot. Tattoos from packs you don't have are marked *not installed* and skipped.
+* Locked tattoos and other mods' overlays are never saved in a preset, and loading never takes them off.
+
 ## SlavetatsUIPzx UI v4.1 (tag `ui-v4-1`)
 
 * **Setup > Camera**, like Show Player In Inventory's settings: live sliders for the browser's camera (Offset X / Y / Z,

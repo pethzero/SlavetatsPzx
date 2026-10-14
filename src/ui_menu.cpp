@@ -9,6 +9,7 @@
 #include "tattoo_model.h"
 #include "tattoo_browser.h"
 #include "tattoo_thumbs.h"
+#include "tattoo_presets.h"
 
 // SKSEMenuFramework.h pulls in <windows.h>, keep it after the SlaveTatsNG headers
 #ifndef NOMINMAX
@@ -624,6 +625,284 @@ namespace slavetats_ng
 				ImGuiMCP::PopStyleVar();
 			}
 
+			// ------------------------------ Presets page -------------------------------------------------------
+			// Same presets as the browser's PRESET tab (tattoo_presets): my 12 + the shared ones on the left, the
+			// selected one's tattoos and actions on the right.
+
+			int                  PresetSlot = -1;   // one of my 12 selected, or
+			int                  SharedIndex = -1;  // one of the shared ones
+			std::array<char, 64> PresetName = {};   // name used by Save / Rename
+			int                  CopySlot = 0;      // where Copy puts a shared preset
+			bool                 ConfirmDelete = false;
+			int                  LastPresetFrame = -100;
+
+			bool PresetCard(const tattoo_presets::PresetFile& a_file, const string& a_title, bool a_selected, int a_id)
+			{
+				auto  dl = ImGuiMCP::GetWindowDrawList();
+				auto  pos = ImGuiMCP::GetCursorScreenPos();
+				float width = ImGuiMCP::GetContentRegionAvail().x;
+
+				ImGuiMCP::PushID(a_id);
+				bool clicked = ImGuiMCP::InvisibleButton("preset", { width, kSlotCardH });
+				bool hovered = ImGuiMCP::IsItemHovered();
+				ImGuiMCP::PopID();
+
+				ImVec2 max{ pos.x + width, pos.y + kSlotCardH };
+				draw::AddRectFilled(dl, pos, max, a_selected ? kAccentSoft : (hovered ? kCardHover : kCard), kRounding, kAllCorners);
+				if (a_selected)
+					draw::AddRectFilled(dl, pos, { pos.x + 3.0f, max.y }, kAccent, kRounding, ImGuiMCP::ImDrawFlags_RoundCornersLeft);
+
+				string texture;
+				string subtitle = "Empty";
+				ImU32  subtitle_color = kMuted;
+				if (a_file.exists && a_file.error.empty()) {
+					if (auto first = tattoo_presets::FirstInstalled(a_file.preset))
+						texture = PreviewPath(*first);
+					int count = static_cast<int>(a_file.preset.tattoos.size());
+					int missing = tattoo_presets::MissingCount(a_file.preset);
+					subtitle = missing ? fmt::format("{} tattoos - {} missing", count, missing) : fmt::format("{} tattoo{}", count, count == 1 ? "" : "s");
+					subtitle_color = missing ? kWarn : kText;
+				} else if (a_file.exists) {
+					subtitle = "Can't read this file";
+					subtitle_color = kDanger;
+				}
+
+				const float pad = 7.0f;
+				const float thumb = kSlotCardH - pad * 2.0f;
+				ImVec2      tmin{ pos.x + pad + 4.0f, pos.y + pad };
+				DrawPreview(dl, tmin, { tmin.x + thumb, tmin.y + thumb }, texture, a_file.exists ? "" : "+");
+
+				float  tx = tmin.x + thumb + 10.0f;
+				float  line = ImGuiMCP::GetTextLineHeight();
+				float  top = pos.y + (kSlotCardH - line * 2.0f - 3.0f) * 0.5f;
+				string title = Ellipsize(a_title, max.x - tx - 10.0f);
+				draw::AddText(dl, { tx, top }, a_file.exists ? kText : kMuted, title.c_str());
+				string sub = Ellipsize(subtitle, max.x - tx - 10.0f);
+				draw::AddText(dl, { tx, top + line + 3.0f }, subtitle_color, sub.c_str());
+
+				if (hovered && a_file.exists)
+					ImGuiMCP::SetTooltip("%s%s%s", a_file.file.c_str(), a_file.error.empty() ? "" : "\n", a_file.error.c_str());
+				return clicked;
+			}
+
+			void SelectPreset(int a_slot, int a_shared)
+			{
+				PresetSlot = a_slot;
+				SharedIndex = a_shared;
+				ConfirmDelete = false;
+				string name;
+				if (a_slot >= 0) {
+					auto& file = tattoo_presets::Mine[a_slot];
+					name = file.exists && file.error.empty() ? file.preset.name : fmt::format("Preset {}", a_slot + 1);
+				}
+				strncpy_s(PresetName.data(), PresetName.size(), name.c_str(), _TRUNCATE);
+			}
+
+			void RenderPresetTattoos(const tattoo_presets::Preset& a_preset)
+			{
+				if (a_preset.tattoos.empty())
+					ImGuiMCP::TextDisabled("%s", "No tattoos: loading it takes every tattoo off.");
+				float line = ImGuiMCP::GetTextLineHeight();
+				for (auto& t : a_preset.tattoos) {
+					auto   dl = ImGuiMCP::GetWindowDrawList();
+					auto   pos = ImGuiMCP::GetCursorScreenPos();
+					float  c[3];
+					ToFloat(t.color, c);
+					ImU32  ink = Rgba(static_cast<int>(c[0] * 255.0f), static_cast<int>(c[1] * 255.0f), static_cast<int>(c[2] * 255.0f));
+					draw::AddRectFilled(dl, { pos.x, pos.y + 2.0f }, { pos.x + line, pos.y + line - 2.0f }, ink, 3.0f, kAllCorners);
+					draw::AddRect(dl, { pos.x, pos.y + 2.0f }, { pos.x + line, pos.y + line - 2.0f }, kBorder, 3.0f, kAllCorners, 1.0f);
+					ImGuiMCP::Dummy({ line, line });
+					ImGuiMCP::SameLine();
+					ImGuiMCP::TextDisabled("%s %d", kAreas[t.area], t.slot + 1);
+					ImGuiMCP::SameLine();
+					ImGuiMCP::Text("%s", t.name.c_str());
+					ImGuiMCP::SameLine();
+					ImGuiMCP::TextDisabled("%s%s", t.section.c_str(), t.glossy ? "  -  glossy" : "");
+					if (TattooCatalog.loaded && !FindTattoo(t.area, t.section, t.name)) {
+						ImGuiMCP::SameLine();
+						ImGuiMCP::TextColored(ToVec4(kDanger), "%s", "not installed");
+					}
+				}
+			}
+
+			void RenderPresetActions()
+			{
+				using namespace tattoo_presets;
+				bool any = true;  // a button is on the action row
+				ImGuiMCP::BeginDisabled(Working > 0);
+				if (PresetSlot >= 0) {
+					auto& file = Mine[PresetSlot];
+					bool  usable = file.exists && file.error.empty();
+					ImGuiMCP::SetNextItemWidth(240.0f);
+					ImGuiMCP::InputText("Name", PresetName.data(), PresetName.size());
+					if (PrimaryButton("Save Current Look"))
+						SaveCurrent(PresetSlot, PresetName.data());
+					if (ImGuiMCP::IsItemHovered())
+						ImGuiMCP::SetTooltip("Saves the %d tattoos %s wears now under this name%s.", static_cast<int>(CurrentLook().size()), TargetName.c_str(),
+							file.exists ? ", replacing what this slot holds" : "");
+					if (usable) {
+						ImGuiMCP::SameLine();
+						if (GhostButton("Load"))
+							Load(file.preset);
+						ImGuiMCP::SameLine();
+						ImGuiMCP::BeginDisabled(PresetName[0] == '\0');
+						if (GhostButton("Rename"))
+							Rename(PresetSlot, PresetName.data());
+						ImGuiMCP::EndDisabled();
+					}
+					if (file.exists) {
+						ImGuiMCP::SameLine();
+						if (DangerButton(ConfirmDelete ? "Click again to delete" : "Delete")) {
+							if (ConfirmDelete) {
+								Delete(PresetSlot);
+								SelectPreset(PresetSlot, -1);
+							} else {
+								ConfirmDelete = true;
+							}
+						}
+					}
+				} else if (SharedIndex >= 0 && Shared[SharedIndex].error.empty()) {
+					if (PrimaryButton("Load"))
+						Load(Shared[SharedIndex].preset);
+					ImGuiMCP::SameLine();
+					auto   slot_name = [](int i) {
+						auto& file = Mine[i];
+						return file.exists ? fmt::format("{}  {} (replaces it)", i + 1, file.error.empty() ? file.preset.name : file.file) : fmt::format("{}  Empty", i + 1);
+					};
+					CopySlot = std::clamp(CopySlot, 0, kSlotCount - 1);
+					string current = slot_name(CopySlot);
+					ImGuiMCP::SetNextItemWidth(220.0f);
+					if (ImGuiMCP::BeginCombo("##copyslot", current.c_str())) {
+						for (int i = 0; i < kSlotCount; i++) {
+							string label = slot_name(i) + fmt::format("##c{}", i);
+							if (ImGuiMCP::Selectable(label.c_str(), CopySlot == i))
+								CopySlot = i;
+						}
+						ImGuiMCP::EndCombo();
+					}
+					ImGuiMCP::SameLine();
+					if (GhostButton("Copy to My Presets")) {
+						if (CopyToSlot(Shared[SharedIndex].preset, CopySlot))
+							SelectPreset(CopySlot, -1);
+					}
+				} else {
+					any = false;
+				}
+				if (CanUndoLoad()) {
+					if (any)
+						ImGuiMCP::SameLine();
+					if (GhostButton("Undo Load"))
+						UndoLoad();
+					if (ImGuiMCP::IsItemHovered())
+						ImGuiMCP::SetTooltip("Put back the tattoos that were on before the last Load.");
+				}
+				ImGuiMCP::EndDisabled();
+
+				if (!Message.empty())
+					ImGuiMCP::TextColored(ToVec4(MessageIsError ? kWarn : kOk), "%s", Message.c_str());
+			}
+
+			void RenderPresets()
+			{
+				using namespace tattoo_presets;
+				DrainQueue();
+				dds_preview::Pump();
+
+				if (!HasTarget) {
+					CenteredHint("Go to Setup and select a target.");
+					return;
+				}
+
+				// The page was just opened (not drawn last frame): read the files again, shared ones may be new
+				int frame = ImGuiMCP::GetFrameCount();
+				if (frame - LastPresetFrame > 2)
+					Rescan();
+				LastPresetFrame = frame;
+				if (PresetSlot >= kSlotCount)
+					PresetSlot = -1;
+				if (SharedIndex >= static_cast<int>(Shared.size()))
+					SharedIndex = -1;
+
+				ImGuiMCP::Text("%s", "Presets");
+				ImGuiMCP::SameLine();
+				ImGuiMCP::TextDisabled("on %s", TargetName.c_str());
+				if (Working > 0) {
+					ImGuiMCP::SameLine();
+					ImGuiMCP::TextColored(ToVec4(kPending), "%s", "(working...)");
+				}
+				ImGuiMCP::SameLine();
+				if (ImGuiMCP::SmallButton("Refresh"))
+					Rescan();
+				if (ImGuiMCP::IsItemHovered())
+					ImGuiMCP::SetTooltip("Read the preset files again.\nMine: %s\nShared (from other people): %s", Folder().c_str(), SharedFolder().c_str());
+
+				float avail = ImGuiMCP::GetContentRegionAvail().x;
+				float list_w = std::clamp(avail * 0.30f, 220.0f, 300.0f);
+				ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_ChildRounding, 8.0f);
+
+				// Left: my 12, then the shared ones
+				ImGuiMCP::BeginChild("presets", { list_w, 0.0f }, ImGuiMCP::ImGuiChildFlags_Border);
+				ImGuiMCP::PushStyleVar(ImGuiMCP::ImGuiStyleVar_ItemSpacing, ImVec2{ 6.0f, 6.0f });
+				SectionLabel("MY PRESETS");
+				for (int i = 0; i < kSlotCount; i++) {
+					auto&  file = Mine[i];
+					string title = file.exists ? fmt::format("{}  {}", i + 1, file.error.empty() ? file.preset.name : file.file) : fmt::format("{}  Empty", i + 1);
+					if (PresetCard(file, title, PresetSlot == i, i))
+						SelectPreset(i, -1);
+				}
+				ImGuiMCP::Spacing();
+				SectionLabel("SHARED");
+				if (Shared.empty())
+					ImGuiMCP::TextDisabled("%s", "None. Put .json presets from others in Presets/Shared, then Refresh.");
+				for (int i = 0; i < static_cast<int>(Shared.size()); i++) {
+					auto& file = Shared[i];
+					if (PresetCard(file, file.error.empty() ? file.preset.name : file.file, SharedIndex == i, 100 + i))
+						SelectPreset(-1, i);
+				}
+				ImGuiMCP::PopStyleVar();
+				ImGuiMCP::EndChild();
+
+				ImGuiMCP::SameLine();
+
+				// Right: what the selected one holds, and its actions
+				ImGuiMCP::BeginChild("preset", { 0.0f, 0.0f }, ImGuiMCP::ImGuiChildFlags_Border);
+				const PresetFile* selected = PresetSlot >= 0 ? &Mine[PresetSlot] : (SharedIndex >= 0 ? &Shared[SharedIndex] : nullptr);
+				if (!selected) {
+					CenteredHint("Select a preset on the left. Load puts the whole look on; Save Current Look stores it.");
+				} else {
+					if (!selected->exists) {
+						ImGuiMCP::Text("Slot %d", PresetSlot + 1);
+						ImGuiMCP::SameLine();
+						ImGuiMCP::TextDisabled("%s", "Empty");
+					} else if (!selected->error.empty()) {
+						ImGuiMCP::TextColored(ToVec4(kDanger), "%s: %s", selected->file.c_str(), selected->error.c_str());
+					} else {
+						ImGuiMCP::Text("%s", selected->preset.name.c_str());
+						ImGuiMCP::SameLine();
+						ImGuiMCP::TextDisabled("%s%s%s%s", selected->preset.character.empty() ? "" : "worn by ", selected->preset.character.c_str(),
+							selected->preset.saved.empty() ? "" : "  -  ", selected->preset.saved.c_str());
+					}
+					ImGuiMCP::Separator();
+
+					// The list takes what the footer (name, buttons, message) leaves
+					float frame_h = ImGuiMCP::GetFrameHeight();
+					float footer = frame_h * 2.0f + ImGuiMCP::GetTextLineHeight() * 2.0f + 36.0f;
+					ImGuiMCP::BeginChild("preset_tattoos", { 0.0f, std::max(80.0f, ImGuiMCP::GetContentRegionAvail().y - footer) });
+					if (!selected->exists)
+						ImGuiMCP::TextDisabled("Save Current Look stores the %d tattoos %s wears now. Locked tattoos and other mods' overlays are left out.",
+							static_cast<int>(CurrentLook().size()), TargetName.c_str());
+					else if (selected->error.empty())
+						RenderPresetTattoos(selected->preset);
+					ImGuiMCP::EndChild();
+
+					ImGuiMCP::Spacing();
+					RenderPresetActions();
+				}
+				ImGuiMCP::EndChild();
+
+				ImGuiMCP::PopStyleVar();
+			}
+
 			// ------------------------------ Tattoo Browser (Setup section) ---------------------------------------
 			// The browser itself is a FLICK window (tattoo_browser.cpp); this page opens it and sets its hotkey.
 
@@ -800,6 +1079,7 @@ namespace slavetats_ng
 			void __stdcall RenderHead() { RenderArea(1); }
 			void __stdcall RenderHands() { RenderArea(2); }
 			void __stdcall RenderFeet() { RenderArea(3); }
+			void __stdcall RenderPresetsPage() { RenderPresets(); }
 		}
 
 		void Register()
@@ -814,6 +1094,7 @@ namespace slavetats_ng
 			SKSEMenuFramework::AddSectionItem("Head Tattoos", RenderHead);
 			SKSEMenuFramework::AddSectionItem("Hand Tattoos", RenderHands);
 			SKSEMenuFramework::AddSectionItem("Foot Tattoos", RenderFeet);
+			SKSEMenuFramework::AddSectionItem("Presets", RenderPresetsPage);
 
 			SKSEMenuFramework::AddInputEvent(OnInput);  // hotkey capture on the Setup page
 			SKSEMenuFramework::AddHudElement(PumpThumbs);

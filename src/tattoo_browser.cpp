@@ -1,6 +1,7 @@
 #include "tattoo_browser.h"
 #include "tattoo_model.h"
 #include "tattoo_thumbs.h"
+#include "tattoo_presets.h"
 
 #ifndef NOMINMAX
 #	define NOMINMAX
@@ -32,6 +33,7 @@ namespace slavetats_ng
 			constexpr const char*   kSettingsFile = "Data/SKSE/Plugins/SlavetatsUIPzx.ini";
 			constexpr const char*   kOldSettingsFile = "Data/SKSE/Plugins/SlavetatsPzx.ini";
 			constexpr int           kSlotsPerPage = 6;  // 2 x 3
+			constexpr int           kPresetTab = kAreaCount;  // the tab after BODY / FACE / HANDS / FEET
 
 			// ------------------------------ Settings -------------------------------------------------------------
 
@@ -331,6 +333,7 @@ namespace slavetats_ng
 						fresh_ = true;
 						previewKey_.clear();  // Draw isn't running while closed, so this can't race it
 						pendingKey_.clear();
+						presetsScanned_ = false;
 					}
 					// Engine work on the game thread, whichever thread FLICK or we called from
 					SKSE::GetTaskInterface()->AddTask([a_open] { a_open ? OnOpenedGame() : OnClosedGame(); });
@@ -390,7 +393,11 @@ namespace slavetats_ng
 				void DrawGroups(int a_area, Slot& a_slot);
 				void DrawPatternGrid(int a_area, Slot& a_slot, float a_height);
 				bool DrawPatternTile(const TattooDef& a_tattoo, const string& a_section, bool a_selected, bool a_applied, bool a_show_section, ImVec2 a_pos, float a_tile, bool& a_hovered);
+				void DrawPresets();
+				bool DrawPresetTile(int a_slot, ImVec2 a_pos, ImVec2 a_size);
+				void DrawPresetDetails(const tattoo_presets::PresetFile& a_file, float a_height);
 				void UpdatePreview();
+				bool Settled(const string& a_key);
 				void StopPreview();
 
 				std::atomic<bool> open_ = false;
@@ -398,7 +405,7 @@ namespace slavetats_ng
 				bool              faulted_ = false;
 				bool              hotkeyWasDown_ = false;
 				bool              autoLoaded_ = false;
-				int               area_ = 0;
+				int               area_ = 0;              // BODY / FACE / HANDS / FEET, or kPresetTab
 				int               page_ = 0;
 				int               editing_ = -1;  // slot open in the editor, -1 = overview
 				std::array<char, 64> search_ = {};
@@ -414,6 +421,13 @@ namespace slavetats_ng
 				string            previewKey_;           // what is on the character now ("" = the records)
 				string            pendingKey_;           // what should be, once it has held still for a moment
 				double            pendingSince_ = 0.0;
+				// PRESET tab
+				bool              presetsScanned_ = false;  // the preset files were read since the tab was opened
+				int               presetSlot_ = -1;      // one of my 12 presets selected, or
+				int               sharedIndex_ = -1;     // one of the shared ones
+				std::array<char, 64> presetName_ = {};   // name field of the Save / Rename popups
+				string            hoverLookKey_;         // preset under the mouse this frame ("" = none)
+				std::vector<LookTattoo> hoverLook_;      // and its tattoos
 			};
 
 			BrowserWindow Window;
@@ -636,14 +650,15 @@ namespace slavetats_ng
 					CenteredHint(Status.empty() ? "Loading..." : Status);
 				} else {
 					DrawHeader();
-					auto& slots = Slots[area_];
-					if (editing_ >= static_cast<int>(slots.size()))
+					if (area_ == kPresetTab || editing_ >= static_cast<int>(Slots[area_].size()))
 						editing_ = -1;
 
 					// The editor sizes its grid to fit exactly, so this never needs to scroll; a scrollbar flickering
 					// on at the last pixel would shake the layout the same way
 					FUCK::BeginChild("tb_body", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
-					if (editing_ >= 0)
+					if (area_ == kPresetTab)
+						DrawPresets();
+					else if (editing_ >= 0)
 						DrawEditor(area_, editing_);
 					else
 						DrawSlots(area_);
@@ -720,10 +735,10 @@ namespace slavetats_ng
 					FUCK::TextColored(kPending, "%s", "(working...)");
 				}
 
-				constexpr const char* kTabs[kAreaCount] = { "BODY", "FACE", "HANDS", "FEET" };
-				for (int a = 0; a < kAreaCount; a++) {
+				constexpr const char* kTabs[kAreaCount + 1] = { "BODY", "FACE", "HANDS", "FEET", "PRESET" };
+				for (int a = 0; a <= kAreaCount; a++) {
 					if (a > 0)
-						FUCK::SameLine(0.0f, 6.0f);
+						FUCK::SameLine(0.0f, a == kPresetTab ? 18.0f : 6.0f);  // set a little apart: it isn't a body area
 					FUCK::PushID(a);
 					if (Chip(kTabs[a], area_ == a) && area_ != a) {
 						EndPreview();
@@ -731,6 +746,7 @@ namespace slavetats_ng
 						area_ = a;
 						page_ = 0;
 						editing_ = -1;
+						presetsScanned_ = false;  // the PRESET tab reads the files again: shared presets may have been added
 					}
 					FUCK::PopID();
 				}
@@ -1124,6 +1140,358 @@ namespace slavetats_ng
 					FUCK::TextColored(kDanger, "%s", slot.error.c_str());
 			}
 
+			// ------------------------------ Presets --------------------------------------------------------------
+			// The PRESET tab: my 12 presets (a whole look each), the shared ones from Presets/Shared, what the
+			// selected one holds, and its actions. Files: tattoo_presets.
+
+			bool BrowserWindow::DrawPresetTile(int a_slot, ImVec2 a_pos, ImVec2 a_size)
+			{
+				auto&  file = tattoo_presets::Mine[a_slot];
+				ImVec2 max = Add(a_pos, a_size);
+				bool   selected = presetSlot_ == a_slot;
+
+				FUCK::SetCursorScreenPos(a_pos);
+				FUCK::PushID(a_slot);
+				bool clicked = FUCK::InvisibleButton("##preset", a_size);
+				bool hovered = FUCK::IsItemHovered();
+				FUCK::PopID();
+
+				FUCK::DrawRectFilled(a_pos, max, selected ? kAccentSoft : (hovered ? kCardHover : kCard), kRounding);
+
+				const float pad = 6.0f;
+				float       line = FUCK::GetTextLineHeight();
+				float       thumb = std::max(0.0f, a_size.y - pad * 2.0f);
+				ImVec2      thumb_min(a_pos.x + pad, a_pos.y + pad);
+				ImVec2      thumb_max(a_pos.x + pad + thumb, a_pos.y + pad + thumb);
+				ImVec2      text(thumb_max.x + pad, a_pos.y + pad);
+				float       text_w = max.x - pad - text.x;
+				float       step = line + 2.0f;
+
+				if (file.exists && file.error.empty()) {
+					auto& preset = file.preset;
+					auto  first = tattoo_presets::FirstInstalled(preset);
+					DrawPreview(thumb_min, thumb_max, first ? PreviewPath(*first) : string(), "");
+					TextAt(text, selected ? kAccent : kText, Ellipsize(fmt::format("{}  {}", a_slot + 1, preset.name), text_w));
+					int    missing = tattoo_presets::MissingCount(preset);
+					string count = fmt::format("{} tattoo{}", preset.tattoos.size(), preset.tattoos.size() == 1 ? "" : "s");
+					TextAt(ImVec2(text.x, text.y + step), missing ? kWarn : kMuted, Ellipsize(missing ? fmt::format("{} - {} missing", count, missing) : count, text_w));
+					if (a_size.y >= step * 3.0f + pad * 2.0f)
+						TextAt(ImVec2(text.x, text.y + step * 2.0f), kMuted, Ellipsize(preset.saved, text_w));
+				} else if (file.exists) {
+					DrawPreview(thumb_min, thumb_max, {}, "");
+					TextAt(text, kDanger, Ellipsize(fmt::format("{}  {}", a_slot + 1, file.file), text_w));
+					TextAt(ImVec2(text.x, text.y + step), kDanger, Ellipsize("Can't read this file", text_w));
+				} else {
+					TextAt(text, selected ? kAccent : kMuted, fmt::format("{}  Empty", a_slot + 1));
+					if (hovered || selected)
+						TextAt(ImVec2(text.x, text.y + step), kMuted, Ellipsize("Save the current look here", text_w));
+				}
+				FUCK::DrawRect(a_pos, max, selected || hovered ? kAccent : kBorder, kRounding, selected ? 2.0f : (hovered ? 1.5f : 1.0f));
+
+				if (hovered && file.exists && file.error.empty()) {
+					hoverLookKey_ = fmt::format("mine|{}|{}|{}", a_slot, file.preset.saved, file.preset.name);
+					hoverLook_ = file.preset.tattoos;
+				}
+				if (hovered) {
+					if (file.exists && file.error.empty())
+						Tooltip(fmt::format("{}\n{} tattoos{}{}\n{}", file.preset.name, file.preset.tattoos.size(),
+							file.preset.character.empty() ? "" : " - worn by ", file.preset.character, file.file));
+					else if (file.exists)
+						Tooltip(fmt::format("{}\n{}", file.file, file.error));
+				}
+				return clicked;
+			}
+
+			void BrowserWindow::DrawPresetDetails(const tattoo_presets::PresetFile& a_file, float a_height)
+			{
+				PushCol(ImGuiCol_ChildBg, Rgba(0, 0, 0, 40));
+				FUCK::BeginChild("tb_preset_details", ImVec2(0.0f, a_height), true, 0);
+				if (!a_file.exists) {
+					FUCK::TextDisabled("%s", "Empty slot.");
+					FUCK::TextDisabled("Save Current Look stores the %d tattoos %s wears now.", static_cast<int>(CurrentLook().size()), TargetName.c_str());
+					FUCK::TextDisabled("%s", "Locked tattoos and other mods' overlays are left out: loading never takes them off.");
+				} else if (!a_file.error.empty()) {
+					FUCK::TextColored(kDanger, "%s: %s", a_file.file.c_str(), a_file.error.c_str());
+				} else {
+					auto& preset = a_file.preset;
+					FUCK::Text("%s", preset.name.c_str());
+					FUCK::SameLine();
+					FUCK::TextDisabled("%s%s%s%s", preset.character.empty() ? "" : "worn by ", preset.character.c_str(),
+						preset.saved.empty() ? "" : "  -  ", preset.saved.c_str());
+					if (preset.tattoos.empty())
+						FUCK::TextDisabled("%s", "No tattoos: loading it takes every tattoo off.");
+					float line = FUCK::GetTextLineHeight();
+					for (auto& t : preset.tattoos) {
+						// Ink swatch, where it goes, what it is
+						ImVec2 pos = FUCK::GetCursorScreenPos();
+						float  c[3];
+						ToFloat(t.color, c);
+						ImVec2 smin(pos.x, pos.y + 2.0f);
+						ImVec2 smax(pos.x + line, pos.y + line - 2.0f);
+						FUCK::DrawRectFilled(smin, smax, ToVec4(c), 3.0f);
+						FUCK::DrawRect(smin, smax, kBorder, 3.0f, 1.0f);
+						FUCK::Dummy(ImVec2(line, line));
+						FUCK::SameLine();
+						FUCK::TextDisabled("%s %d", kAreas[t.area], t.slot + 1);
+						FUCK::SameLine();
+						FUCK::Text("%s", t.name.c_str());
+						FUCK::SameLine();
+						FUCK::TextDisabled("%s%s", t.section.c_str(), t.glossy ? "  -  glossy" : "");
+						if (TattooCatalog.loaded && !FindTattoo(t.area, t.section, t.name)) {
+							FUCK::SameLine();
+							FUCK::TextColored(kDanger, "%s", "not installed");
+						}
+					}
+				}
+				FUCK::EndChild();
+				FUCK::PopStyleColor();
+			}
+
+			void BrowserWindow::DrawPresets()
+			{
+				using namespace tattoo_presets;
+				if (!presetsScanned_) {
+					presetsScanned_ = true;
+					Rescan();
+				}
+				if (presetSlot_ >= kSlotCount)
+					presetSlot_ = -1;
+				if (sharedIndex_ >= static_cast<int>(Shared.size()))
+					sharedIndex_ = -1;
+
+				const float spacing = 8.0f;
+				float       frame = FUCK::GetFrameHeight();
+				float       line = FUCK::GetTextLineHeight();
+				float       row = line + 8.0f;  // one shared preset
+
+				// Top to bottom: header, 3 x 4 tiles, shared label + list, details, actions, message. The body child
+				// never scrolls, so everything is sized to fit what is left.
+				int   shared_rows = std::clamp(static_cast<int>(Shared.size()), 2, 4);
+				float shared_h = shared_rows * row + 10.0f;
+				float fixed = (frame + spacing) * 3.0f + shared_h + line * 2.0f + spacing * 4.0f;
+				float room = std::max(0.0f, FUCK::GetContentRegionAvail().y - fixed);
+				float tile_h = std::clamp((room * 0.62f - spacing * 3.0f) / 4.0f, 52.0f, 110.0f);
+				float grid_h = tile_h * 4.0f + spacing * 3.0f;
+				float details_h = std::max(line * 3.0f + 16.0f, room - grid_h);
+
+				// MY PRESETS ... Refresh
+				FUCK::AlignTextToFramePadding();
+				FUCK::TextDisabled("%s", "MY PRESETS");
+				{
+					const char* refresh = "Refresh";
+					float       w = FUCK::CalcTextSize(refresh).x + FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x * 2.0f;
+					FUCK::SameLine();
+					auto cursor = FUCK::GetCursorScreenPos();
+					FUCK::SetCursorScreenPos(ImVec2(cursor.x + std::max(0.0f, FUCK::GetContentRegionAvail().x - w), cursor.y));
+					if (GhostButton(refresh))
+						Rescan();
+					if (FUCK::IsItemHovered())
+						Tooltip(fmt::format("Read the preset files again.\nMine: {}\nShared: {}", Folder(), SharedFolder()));
+				}
+
+				// 3 x 4 tiles
+				{
+					float  width = FUCK::GetContentRegionAvail().x;
+					ImVec2 origin = FUCK::GetCursorScreenPos();
+					ImVec2 tile((width - spacing * 2.0f) / 3.0f, tile_h);
+					for (int i = 0; i < kSlotCount; i++) {
+						ImVec2 pos(origin.x + (i % 3) * (tile.x + spacing), origin.y + (i / 3) * (tile.y + spacing));
+						if (DrawPresetTile(i, pos, tile)) {
+							presetSlot_ = i;
+							sharedIndex_ = -1;
+						}
+					}
+					// Claim the grid's area as one item
+					FUCK::SetCursorScreenPos(origin);
+					FUCK::Dummy(ImVec2(width, grid_h));
+				}
+
+				// SHARED
+				FUCK::Spacing();
+				FUCK::AlignTextToFramePadding();
+				FUCK::TextDisabled("%s", "SHARED");
+				FUCK::SameLine();
+				FUCK::TextDisabled("%s", "- presets from other people, in Presets/Shared");
+				if (FUCK::IsItemHovered())
+					Tooltip(fmt::format("Put preset files (.json) you got from someone in\n{}\nthen press Refresh. They need the same tattoo packs installed.\n\n"
+										"Yours are in {} (Preset01.json ... Preset12.json): send those to share.",
+						SharedFolder(), Folder()));
+				PushCol(ImGuiCol_ChildBg, Rgba(0, 0, 0, 40));
+				FUCK::BeginChild("tb_shared", ImVec2(0.0f, shared_h), true, 0);
+				if (Shared.empty()) {
+					FUCK::TextDisabled("%s", "None yet. Put .json preset files in:");
+					FUCK::TextDisabled("%s", SharedFolder().c_str());
+				}
+				for (int i = 0; i < static_cast<int>(Shared.size()); i++) {
+					auto&  file = Shared[i];
+					string label = file.error.empty() ?
+					                   fmt::format("{}   -   {} tattoos{}{}##s{}", file.preset.name, file.preset.tattoos.size(),
+										   file.preset.character.empty() ? "" : ", worn by ", file.preset.character, i) :
+					                   fmt::format("{}   -   can't read it##s{}", file.file, i);
+					if (FUCK::Selectable(label.c_str(), sharedIndex_ == i, 0, ImVec2(0.0f, row - 4.0f))) {
+						sharedIndex_ = i;
+						presetSlot_ = -1;
+					}
+					if (FUCK::IsItemHovered()) {
+						Tooltip(file.error.empty() ? file.file : file.file + "\n" + file.error);
+						if (file.error.empty()) {
+							hoverLookKey_ = fmt::format("shared|{}|{}", file.file, file.preset.saved);
+							hoverLook_ = file.preset.tattoos;
+						}
+					}
+				}
+				FUCK::EndChild();
+				FUCK::PopStyleColor();
+
+				// What the selected one holds
+				FUCK::Spacing();
+				const PresetFile* selected = presetSlot_ >= 0 ? &Mine[presetSlot_] : (sharedIndex_ >= 0 ? &Shared[sharedIndex_] : nullptr);
+				if (selected) {
+					DrawPresetDetails(*selected, details_h);
+				} else {
+					PushCol(ImGuiCol_ChildBg, Rgba(0, 0, 0, 40));
+					FUCK::BeginChild("tb_preset_details", ImVec2(0.0f, details_h), true, 0);
+					CenteredHint("Pick a preset to see its tattoos.");
+					FUCK::EndChild();
+					FUCK::PopStyleColor();
+				}
+
+				// Actions
+				FUCK::Spacing();
+				bool usable = selected && selected->exists && selected->error.empty();
+				bool any = false;  // a button is on this row
+				FUCK::BeginDisabled(Working > 0);
+				if (presetSlot_ >= 0) {
+					auto& file = Mine[presetSlot_];
+					if (PrimaryButton("Save Current Look")) {
+						string name = usable ? file.preset.name : fmt::format("Preset {}", presetSlot_ + 1);
+						strncpy_s(presetName_.data(), presetName_.size(), name.c_str(), _TRUNCATE);
+						FUCK::OpenPopup("tb_preset_save");
+					}
+					any = true;
+					if (usable) {
+						FUCK::SameLine();
+						if (GhostButton("Load"))
+							Load(file.preset);
+						FUCK::SameLine();
+						if (GhostButton("Rename")) {
+							strncpy_s(presetName_.data(), presetName_.size(), file.preset.name.c_str(), _TRUNCATE);
+							FUCK::OpenPopup("tb_preset_rename");
+						}
+					}
+					if (file.exists) {
+						FUCK::SameLine();
+						if (DangerButton("Delete"))
+							FUCK::OpenPopup("tb_preset_delete");
+					}
+				} else if (sharedIndex_ >= 0 && usable) {
+					if (PrimaryButton("Load"))
+						Load(Shared[sharedIndex_].preset);
+					FUCK::SameLine();
+					if (GhostButton("Copy to My Presets"))
+						FUCK::OpenPopup("tb_preset_copy");
+					any = true;
+				}
+
+				// Undo Load, right-aligned on the same row
+				if (CanUndoLoad()) {
+					const char* undo = "Undo Load";
+					float       w = FUCK::CalcTextSize(undo).x + FUCK::GetStyleVarVec(ImGuiStyleVar_FramePadding).x * 2.0f;
+					if (any)
+						FUCK::SameLine();
+					auto  cursor = FUCK::GetCursorScreenPos();
+					float avail = FUCK::GetContentRegionAvail().x;
+					if (avail >= w)
+						FUCK::SetCursorScreenPos(ImVec2(cursor.x + avail - w, cursor.y));
+					if (GhostButton(undo))
+						UndoLoad();
+					if (FUCK::IsItemHovered())
+						Tooltip("Put back the tattoos that were on before the last Load.");
+					any = true;
+				}
+				FUCK::EndDisabled();
+				if (!any)
+					FUCK::Dummy(ImVec2(1.0f, frame));
+
+				if (IsPreviewing())
+					FUCK::TextColored(kPending, "%s", "Previewing the preset under the mouse - Load puts it on for real.");
+				// Result of the last action: the first line, the rest on hover
+				else if (!Message.empty()) {
+					auto   cut = Message.find('\n');
+					string first = cut == string::npos ? Message : Message.substr(0, cut) + "  (hover for the list)";
+					FUCK::TextColored(MessageIsError ? kWarn : kOk, "%s", first.c_str());
+					if (cut != string::npos && FUCK::IsItemHovered())
+						Tooltip(Message);
+				}
+
+				// Popups
+				if (FUCK::BeginPopup("tb_preset_save")) {
+					if (presetSlot_ >= 0) {
+						auto& file = Mine[presetSlot_];
+						FUCK::Text("Save the current look to slot %d", presetSlot_ + 1);
+						if (file.exists)
+							FUCK::TextColored(kWarn, "Replaces \"%s\".", file.error.empty() ? file.preset.name.c_str() : file.file.c_str());
+						FUCK::TextDisabled("%d tattoos on %s", static_cast<int>(CurrentLook().size()), TargetName.c_str());
+						FUCK::SetNextItemWidth(280.0f);
+						FUCK::InputText("Name", presetName_.data(), presetName_.size(), 0);
+						if (PrimaryButton("Save")) {
+							SaveCurrent(presetSlot_, presetName_.data());
+							FUCK::CloseCurrentPopup();
+						}
+						FUCK::SameLine();
+					}
+					if (GhostButton("Cancel"))
+						FUCK::CloseCurrentPopup();
+					FUCK::EndPopup();
+				}
+				if (FUCK::BeginPopup("tb_preset_rename")) {
+					FUCK::SetNextItemWidth(280.0f);
+					FUCK::InputText("Name", presetName_.data(), presetName_.size(), 0);
+					FUCK::BeginDisabled(presetName_[0] == '\0' || presetSlot_ < 0);
+					if (PrimaryButton("Rename")) {
+						Rename(presetSlot_, presetName_.data());
+						FUCK::CloseCurrentPopup();
+					}
+					FUCK::EndDisabled();
+					FUCK::SameLine();
+					if (GhostButton("Cancel"))
+						FUCK::CloseCurrentPopup();
+					FUCK::EndPopup();
+				}
+				if (FUCK::BeginPopup("tb_preset_delete")) {
+					if (presetSlot_ >= 0) {
+						auto& file = Mine[presetSlot_];
+						FUCK::Text("Delete \"%s\"?", file.error.empty() ? file.preset.name.c_str() : file.file.c_str());
+						FUCK::TextDisabled("%s", "The file is removed. The tattoos you wear stay on.");
+						if (DangerButton("Delete")) {
+							Delete(presetSlot_);
+							FUCK::CloseCurrentPopup();
+						}
+						FUCK::SameLine();
+					}
+					if (GhostButton("Cancel"))
+						FUCK::CloseCurrentPopup();
+					FUCK::EndPopup();
+				}
+				if (FUCK::BeginPopup("tb_preset_copy")) {
+					FUCK::TextDisabled("%s", "Copy to which slot?");
+					for (int i = 0; i < kSlotCount && sharedIndex_ >= 0; i++) {
+						auto&  file = Mine[i];
+						string label = file.exists ?
+						                   fmt::format("{}  {}   (replaces it)##c{}", i + 1, file.error.empty() ? file.preset.name : file.file, i) :
+						                   fmt::format("{}  Empty##c{}", i + 1, i);
+						if (FUCK::Selectable(label.c_str(), false, 0, ImVec2(0.0f, 0.0f))) {
+							if (CopyToSlot(Shared[sharedIndex_].preset, i)) {
+								presetSlot_ = i;
+								sharedIndex_ = -1;
+							}
+							FUCK::CloseCurrentPopup();
+						}
+					}
+					FUCK::EndPopup();
+				}
+			}
+
 			// ------------------------------ Preview --------------------------------------------------------------
 
 			// Puts the records back on the character and forgets what was shown
@@ -1134,6 +1502,27 @@ namespace slavetats_ng
 				pendingKey_.clear();
 			}
 
+			// True once a_key (what should be on the character) has held still for a moment and differs from what is
+			// shown: previewKey_ becomes a_key and the caller draws it. Sweeping the mouse across the grid shouldn't
+			// redraw the character for every tile it passes.
+			bool BrowserWindow::Settled(const string& a_key)
+			{
+				if (a_key == previewKey_) {
+					pendingKey_ = a_key;
+					return false;
+				}
+				double now = FUCK::GetTime();
+				if (a_key != pendingKey_) {
+					pendingKey_ = a_key;
+					pendingSince_ = now;
+					return false;
+				}
+				if (now - pendingSince_ < 0.12)
+					return false;
+				previewKey_ = a_key;
+				return true;
+			}
+
 			// Once per frame after the editor drew (so the hovered tile is known)
 			void BrowserWindow::UpdatePreview()
 			{
@@ -1141,6 +1530,24 @@ namespace slavetats_ng
 				string name = std::move(hoverName_);
 				hoverSection_.clear();
 				hoverName_.clear();
+				string look_key = std::move(hoverLookKey_);
+				hoverLookKey_.clear();
+
+				// PRESET tab: the whole look under the mouse, else what is saved
+				if (area_ == kPresetTab) {
+					if (!PreviewMode) {
+						if (!previewKey_.empty())
+							StopPreview();
+						return;
+					}
+					if (!Settled(look_key.empty() ? "" : "look|" + look_key))
+						return;
+					if (look_key.empty())
+						EndPreview();
+					else
+						PreviewLook(hoverLook_);
+					return;
+				}
 
 				if (!PreviewMode || editing_ < 0 || editing_ >= static_cast<int>(Slots[area_].size())) {
 					if (!previewKey_.empty())
@@ -1159,21 +1566,8 @@ namespace slavetats_ng
 				}
 				string key = want ? fmt::format("{}|{}|{}|{:06x}|{:06x}|{}", editing_, section, want->name, ToRGB(slot.ink), ToRGB(slot.glow), slot.glossy) : "";
 
-				if (key == previewKey_) {
-					pendingKey_ = key;
+				if (!Settled(key))
 					return;
-				}
-				// Sweeping the mouse across the grid shouldn't redraw the character for every tile it passes
-				double now = FUCK::GetTime();
-				if (key != pendingKey_) {
-					pendingKey_ = key;
-					pendingSince_ = now;
-					return;
-				}
-				if (now - pendingSince_ < 0.12)
-					return;
-
-				previewKey_ = key;
 				if (want)
 					PreviewSlot(area_, editing_, want);
 				else

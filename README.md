@@ -50,6 +50,29 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
   **Recenter** (next to Refresh) goes back to the starting shot. Closing the browser puts the camera, the zoom and the
   character's heading back where they were.
 
+### Presets
+
+The **PRESET** tab (after Body / Face / Hands / Feet) saves a whole look: every SlaveTats tattoo the character wears, in
+every area, with its slot, ink, glow and gloss.
+
+* **12 preset slots.** Pick one, **Save Current Look** (give it a name), and later **Load** puts the whole look back on.
+  Loading takes off the tattoos worn now first. **Undo Load** puts them back if you change your mind.
+  **Rename** and **Delete** too.
+* **Hover a preset to try it on**: with Preview on (Setup), the whole look shows on the character while the mouse is
+  over a preset, nothing saved. Move away and the tattoos you wear come back; **Load** makes it real.
+* **Shared presets**: presets from other people. Your presets are plain files you can send to someone:
+
+  | Folder (in `Data/SKSE/Plugins/SlavetatsUIPzx/`) | What |
+  |---|---|
+  | `Presets/Preset01.json` ... `Preset12.json` | your 12 slots (with MO2 they end up in `overwrite`) |
+  | `Presets/Shared/*.json` | presets you got from others: drop them here, press **Refresh** |
+
+  A shared preset can be loaded straight away or copied into one of your slots (**Copy to My Presets**). Mods can ship
+  presets too, by putting them in `Presets/Shared/`.
+* A preset only names its tattoos (group + pattern), so it needs the **same tattoo packs**. Tattoos you don't have are
+  marked *not installed* and skipped when you load. If a tattoo's slot is taken, it goes in the first free one.
+* **Locked tattoos** (put on by other mods) and other mods' overlays are never saved, and loading never takes them off.
+
 ### Mod Control Panel (SKSE Menu Framework)
 
 * **Setup**: choose the target (the player, or the actor selected in the console), rescan tattoo packs
@@ -57,6 +80,8 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
 * **Setup > Camera**: the browser's camera, with live sliders like Show Player In Inventory's: *Offset X / Y / Z*,
   *Zoom*, *FOV*, *Rotation Z* (around the character), *Rotation X* (tilt), then **Save Settings** (writes the ini) and **Reset Defaults**.
 * **Body / Head / Hand / Foot** pages: slot list with thumbnails and the same editor as the browser.
+* **Presets** page: the same presets as the browser's PRESET tab (my 12 and the shared ones) with Save Current Look,
+  Load, Rename, Delete, Copy to My Presets and Undo Load.
 
 ### Thumbnails
 
@@ -179,7 +204,8 @@ build.bat release "D:\MO2\mods\SlavetatsUIPzx"   # also copy the DLL/PDB + confi
 | Path | What |
 |---|---|
 | `src/tattoo_model.*` | Tattoo catalog, slot state and the SlaveTats actions shared by both UIs |
-| `src/tattoo_browser.cpp` | FLICK Tattoo Browser: layout, camera framing and turntable, preview, SmoothCam |
+| `src/tattoo_browser.cpp` | FLICK Tattoo Browser: layout, camera framing and turntable, preview, SmoothCam, PRESET tab |
+| `src/tattoo_presets.*` | Preset files (JSON): 12 slots, shared presets, load / undo |
 | `src/ui_menu.cpp` | SKSE Menu Framework pages |
 | `src/dds_preview.*`, `src/tattoo_thumbs.*` | DDS thumbnails (D3D11 for the menu, PNG cache for FLICK) |
 | `extern/FUCK_API.h` | FLICK's plugin API header |

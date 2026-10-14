@@ -41,6 +41,7 @@ namespace slavetats_ng
 		string                                    Status;
 
 		std::atomic<bool> Previewing = false;  // an overlay on the target differs from the records
+		std::set<std::pair<int, int>> LookShown;  // (area, slot) the last PreviewLook drew a tattoo in
 
 		std::mutex                         QueueLock;
 		std::vector<std::function<void()>> Queue;
@@ -425,6 +426,113 @@ namespace slavetats_ng
 			});
 		}
 
+		// ------------------------------ Looks (presets) -------------------------------------------------------
+
+		std::vector<LookTattoo> CurrentLook()
+		{
+			std::vector<LookTattoo> look;
+			for (int a = 0; a < kAreaCount; a++) {
+				for (int i = 0; i < static_cast<int>(Slots[a].size()); i++) {
+					auto& applied = Slots[a][i].applied;
+					if (applied.kind == SlotKind::kTattoo && !applied.locked)
+						look.push_back({ a, i, applied.section, applied.name, applied.color, applied.glow, applied.glossy });
+				}
+			}
+			return look;
+		}
+
+		void ApplyLook(std::vector<LookTattoo> a_look, std::function<void(int, std::vector<string>)> a_done)
+		{
+			Previewing = false;  // the synchronize below redraws every slot from the records
+			Status.clear();
+			RunOnGameThread([id = TargetID, look = std::move(a_look), done = std::move(a_done)]() mutable -> std::function<void()> {
+				auto actor = GetActor(id);
+				if (!actor)
+					return [] { Status = "The target is not available anymore."; };
+
+				// Slots other mods draw their own overlays in: never ours to fill
+				std::array<std::set<int>, kAreaCount> external;
+				for (int a = 0; a < kAreaCount; a++) {
+					int list = JValue::addToPool(JArray::object(), kPool);
+					external_slots(actor, kAreas[a], list);
+					for (int i = 0, n = JArray::count(list); i < n; i++)
+						external[a].insert(JArray::getInt(list, i));
+				}
+				JValue::cleanPool(kPool);
+
+				// Off with the current look (locked tattoos refuse and stay where they are)
+				for (int a = 0; a < kAreaCount; a++) {
+					RE::BSFixedString area = kAreas[a];
+					for (int i = 0, n = SLOTS(area); i < n; i++) {
+						int entry = get_applied_tattoo_in_slot(actor, area, i);
+						if (entry != 0 && JMap::getInt(entry, "locked") == 0)
+							remove_tattoo_from_slot(actor, area, i, false, true);
+					}
+				}
+
+				// On with the new one. A tattoo can require another one of the same look, so the ones SlaveTats
+				// refuses get a second try once the rest are on.
+				int                             applied = 0;
+				std::vector<string>             failed;
+				std::vector<const LookTattoo*>  pending;
+				for (auto& t : look) {
+					if (t.area >= 0 && t.area < kAreaCount)
+						pending.push_back(&t);
+				}
+				for (int pass = 0; pass < 2 && !pending.empty(); pass++) {
+					std::vector<const LookTattoo*> refused;
+					for (auto t : pending) {
+						RE::BSFixedString area = kAreas[t->area];
+						string            label = fmt::format("{}: {} / {}", kAreas[t->area], t->section, t->name);
+
+						int tattoo = FindInCache(t->area, t->section, t->name);
+						if (tattoo == 0) {
+							failed.push_back(label + " - not installed");
+							continue;
+						}
+						int slot = t->slot;
+						if (slot < 0 || slot >= SLOTS(area) || external[t->area].contains(slot) || get_applied_tattoo_in_slot(actor, area, slot) != 0)
+							slot = _available_slot(actor, area);
+						if (slot < 0) {
+							failed.push_back(label + " - no free slot");
+							continue;
+						}
+
+						int copy = JValue::addToPool(JValue::shallowCopy(tattoo), kPool);
+						JMap::removeKey(copy, "slot");
+						int entry = add_and_get_tattoo(actor, copy, slot, false, true);
+						JValue::cleanPool(kPool);
+						if (entry == 0) {
+							if (pass == 0)
+								refused.push_back(t);
+							else
+								failed.push_back(label + " - refused (missing texture, or excluded/required by another tattoo)");
+							continue;
+						}
+						JMap::setInt(entry, "color", t->color);
+						JMap::setInt(entry, "glow", t->glow);
+						if (IsGlossy(entry) != t->glossy)
+							SetGlossy(entry, t->glossy);
+						applied++;
+					}
+					pending = std::move(refused);
+				}
+
+				JFormDB::setInt(actor, ".SlaveTats.updated", 1);
+				synchronize_tattoos(actor, true);
+
+				std::array<std::vector<SlotState>, kAreaCount> states;
+				for (int a = 0; a < kAreaCount; a++)
+					states[a] = ReadSlots(actor, a);
+				return [applied, failed = std::move(failed), states = std::move(states), done = std::move(done)]() mutable {
+					for (int a = 0; a < kAreaCount; a++)
+						SetSlots(a, std::move(states[a]));
+					if (done)
+						done(applied, std::move(failed));
+				};
+			});
+		}
+
 		// ------------------------------ Preview --------------------------------------------------------------
 
 		bool IsPreviewing() { return Previewing.load(); }
@@ -454,6 +562,86 @@ namespace slavetats_ng
 				auto base = actor->GetActorBase();
 				bool female = base && base->GetSex() == RE::SEX::kFemale;
 				apply_overlay(actor, female, kAreas[a_area], a_index, path.c_str(), color, glow, gloss, "", 1.0f);
+			});
+		}
+
+		void PreviewLook(const std::vector<LookTattoo>& a_look)
+		{
+			for (int a = 0; a < kAreaCount; a++) {
+				if (!SlotsKnown[a])
+					return;
+			}
+
+			// What each slot shows: path empty = cleared
+			struct Paint
+			{
+				int    area;
+				int    slot;
+				string path;
+				int    color = 0;
+				int    glow = 0;
+				bool   gloss = false;
+			};
+			std::vector<Paint>            paint;
+			std::set<std::pair<int, int>> shown;
+			string                        prefix = PREFIX().c_str();
+
+			for (int a = 0; a < kAreaCount; a++) {
+				auto& slots = Slots[a];
+				int   n = static_cast<int>(slots.size());
+				// Same placement as ApplyLook: every slot that isn't locked or another mod's is free once the
+				// current look is off; a tattoo goes back to its own slot, else to the first free one
+				std::vector<bool> usable(n);
+				for (int i = 0; i < n; i++)
+					usable[i] = slots[i].applied.kind != SlotKind::kExternal && !slots[i].applied.locked;
+				std::vector<const LookTattoo*> at(n, nullptr);
+				std::vector<const LookTattoo*> later;
+				for (auto& t : a_look) {
+					if (t.area != a)
+						continue;
+					auto def = FindTattoo(a, t.section, t.name);
+					if (!def || def->texture.empty())
+						continue;  // not installed: Load skips it too
+					if (t.slot >= 0 && t.slot < n && usable[t.slot] && !at[t.slot])
+						at[t.slot] = &t;
+					else
+						later.push_back(&t);
+				}
+				for (auto t : later) {
+					for (int i = 0; i < n; i++) {
+						if (usable[i] && !at[i]) {
+							at[i] = t;
+							break;
+						}
+					}
+				}
+				// Clearing is an overlay update too: only where something shows (saved, or the last preview's)
+				for (int i = 0; i < n; i++) {
+					if (!usable[i])
+						continue;
+					if (auto t = at[i]) {
+						paint.push_back({ a, i, prefix + FindTattoo(a, t->section, t->name)->texture, t->color, t->glow, t->glossy });
+						shown.insert({ a, i });
+					} else if (slots[i].applied.kind == SlotKind::kTattoo || LookShown.contains({ a, i })) {
+						paint.push_back({ a, i, {} });
+					}
+				}
+			}
+			LookShown = std::move(shown);
+
+			Previewing = true;
+			SKSE::GetTaskInterface()->AddTask([id = TargetID, paint = std::move(paint)] {
+				auto actor = GetActor(id);
+				if (!actor)
+					return;
+				auto base = actor->GetActorBase();
+				bool female = base && base->GetSex() == RE::SEX::kFemale;
+				for (auto& p : paint) {
+					if (p.path.empty())
+						clear_overlay(actor, female, kAreas[p.area], p.slot);
+					else
+						apply_overlay(actor, female, kAreas[p.area], p.slot, p.path.c_str(), p.color, p.glow, p.gloss, "", 1.0f);
+				}
 			});
 		}
 

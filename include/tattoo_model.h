@@ -136,6 +136,26 @@ namespace slavetats_ng
 		void ApplySlot(int a_area, int a_index);
 		void RemoveSlot(int a_area, int a_index);
 
+		// One tattoo of a whole look (a preset): which slot it was in and how it was colored
+		struct LookTattoo
+		{
+			int    area = 0;
+			int    slot = -1;  // the slot it goes back to when that one is free, else the first free slot
+			string section;
+			string name;
+			int    color = 0;
+			int    glow = 0;
+			bool   glossy = false;
+		};
+
+		// What the target wears now, from the slot states (all four areas must be known). Locked tattoos and
+		// other mods' overlays are left out: a look never takes them off, so it doesn't carry them either.
+		std::vector<LookTattoo> CurrentLook();
+
+		// Takes off every SlaveTats tattoo the target wears (except locked ones) and puts a_look on instead, then
+		// a_done runs on the UI thread with how many went on and a line for each one that didn't.
+		void ApplyLook(std::vector<LookTattoo> a_look, std::function<void(int a_applied, std::vector<string> a_failed)> a_done);
+
 		// ------------------------------ Preview --------------------------------------------------------------
 		// Shows a slot's pending selection (pattern, ink, glow, gloss) on the target WITHOUT touching the SlaveTats
 		// records: the overlay is applied directly. EndPreview() puts every slot back to what is saved (a forced
@@ -144,6 +164,9 @@ namespace slavetats_ng
 		// a_tattoo: the pattern to show (e.g. the one under the mouse), nullptr = the slot's pending selection.
 		// Ink/glow/gloss come from the slot's pending edits. UI thread.
 		void PreviewSlot(int a_area, int a_index, const TattooDef* a_tattoo = nullptr);
+		// A whole look (a preset) on the target, in the slots ApplyLook would put it in, without touching the records.
+		// Slots the look doesn't use are shown empty; locked slots and other mods' overlays are left alone. UI thread.
+		void PreviewLook(const std::vector<LookTattoo>& a_look);
 		void EndPreview();                          // any thread; no-op when nothing is previewed
 		bool IsPreviewing();
 	}
