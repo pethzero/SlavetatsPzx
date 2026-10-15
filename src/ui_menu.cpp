@@ -1051,6 +1051,13 @@ namespace slavetats_ng
 				}
 
 				ImGuiMCP::SeparatorText("Tattoos");
+				ImGuiMCP::BeginDisabled(!HasTarget);
+				if (ImGuiMCP::Button("Log overlays"))
+					LogOverlays();
+				ImGuiMCP::EndDisabled();
+				if (ImGuiMCP::IsItemHovered())
+					ImGuiMCP::SetTooltip("Writes what every overlay slot of the target really shows (texture, alpha) to SlavetatsUIPzx.log.\nFor finding out why a tattoo doesn't show.");
+				ImGuiMCP::SameLine();
 				if (ImGuiMCP::Button("Add/remove tattoos")) {
 					CompileTattoos();
 				}

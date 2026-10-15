@@ -73,6 +73,7 @@ set(headers ${headers}
 	include/tattoo_browser.h
 	include/tattoo_thumbs.h
 	include/tattoo_presets.h
+	include/overlay_preview.h
 	extern/FUCK_API.h
 	extern/SmoothCamAPI.h
 	src/PCH.h
@@ -117,6 +118,7 @@ set(sources ${sources}
 	src/tattoo_browser.cpp
 	src/tattoo_thumbs.cpp
 	src/tattoo_presets.cpp
+	src/overlay_preview.cpp
 )
 
 ########################################################################################################################

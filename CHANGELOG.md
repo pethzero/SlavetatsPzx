@@ -1,5 +1,18 @@
 # Changes
 
+## SlavetatsUIPzx UI v5.2 (tag `ui-v5-2`, not released yet)
+
+* **Fixed the crashes on saving, on entering a new cell and while rendering, and the character turning invisible**
+  (skee64.dll from UBE 2.0, "Using legacy address tables" in the log). On that build, SlaveTatsNG's address for
+  RaceMenu's RemoveNodeOverride writes into the node name it is given: a diagnostic caught every call turning
+  'Body [Ovl16]' into 'vl16]' or '', and no other function ever did. That damaged the game's string pool, which
+  everything else then tripped over. RemoveNodeOverride is no longer called on the legacy path: SlaveTats always
+  blanks a slot (blank texture, alpha 0) before removing its overrides, so leaving them is harmless.
+* Strings handed to RaceMenu on the legacy path are pinned, and a diagnostic logs ("legacy RaceMenu ...") any call
+  that changes one.
+* Previews wait for a Save / Remove / Load to finish before drawing again (SlaveTats' synchronize runs a frame later).
+* Setup > **Log overlays**: writes what every overlay slot of the target really shows (texture, alpha) to the log.
+
 ## SlavetatsUIPzx UI v5.1 (tag `ui-v5-1`)
 
 * README: a note that Fitting Room's Shape and Overlays may cause problems next to this mod on SE 1.5.97 (both go

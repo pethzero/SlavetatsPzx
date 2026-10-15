@@ -5,6 +5,7 @@
 #include "tattoo.h"
 #include "overlays.h"
 #include "ni_node_override_lock.h"
+#include "overlay_preview.h"
 #include "tattoo_model.h"
 
 using namespace slavetats_ng::jcwrapper;
@@ -400,6 +401,10 @@ namespace slavetats_ng
 			PendingRestore = false;
 		}
 
+		// Game thread, before a real edit: synchronize_tattoos runs as its own task a frame later (the SKSE task thread
+		// isn't the one it calls main), so no preview may be painted before it has: the next paint waits a kPaintGap
+		void HoldPreviews() { LastPaint = std::chrono::steady_clock::now(); }
+
 		// What the records draw in a slot, as a PaintKey. UI thread.
 		string RecordKey(int a_area, int a_slot)
 		{
@@ -554,6 +559,7 @@ namespace slavetats_ng
 				if (!actor)
 					return [] { Status = "The target is not available anymore."; };
 
+				HoldPreviews();
 				auto error = ApplyTattoo(actor, req);
 				Shown.clear();
 				auto states = ReadSlots(actor, req.area);
@@ -581,6 +587,7 @@ namespace slavetats_ng
 				if (!actor)
 					return [] { Status = "The target is not available anymore."; };
 
+				HoldPreviews();
 				auto error = RemoveTattoo(actor, a_area, a_index);
 				Shown.clear();
 				auto states = ReadSlots(actor, a_area);
@@ -616,6 +623,8 @@ namespace slavetats_ng
 				auto actor = GetActor(id);
 				if (!actor)
 					return [] { Status = "The target is not available anymore."; };
+
+				HoldPreviews();
 
 				// Slots other mods draw their own overlays in: never ours to fill
 				std::array<std::set<int>, kAreaCount> external;
@@ -704,6 +713,18 @@ namespace slavetats_ng
 		// ------------------------------ Preview --------------------------------------------------------------
 
 		bool IsPreviewing() { return Previewing.load(); }
+
+		void LogOverlays()
+		{
+			SKSE::GetTaskInterface()->AddTask([id = TargetID] {
+				auto actor = GetActor(id);
+				if (!actor)
+					return;
+				logger::info("Overlays of {}:", actor->GetDisplayFullName() ? actor->GetDisplayFullName() : "?");
+				for (int a = 0; a < kAreaCount; a++)
+					overlay_preview::LogShapes(actor, kAreas[a], SLOTS(kAreas[a]));
+			});
+		}
 
 		void PreviewSlot(int a_area, int a_index, const TattooDef* a_tattoo)
 		{

@@ -174,5 +174,8 @@ namespace slavetats_ng
 		// (falls back to EndPreview when a saved tattoo's pack isn't in the catalog)
 		void EndPreviewQuick();
 		bool IsPreviewing();
+
+		// Diagnostic (Setup > Log overlays): writes what every overlay shape of the target shows to the log
+		void LogOverlays();
 	}
 }
