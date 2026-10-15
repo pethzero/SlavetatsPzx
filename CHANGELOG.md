@@ -1,6 +1,6 @@
 # Changes
 
-## SlavetatsUIPzx UI v5.2 (tag `ui-v5-2`, not released yet)
+## SlavetatsUIPzx UI v5.2 (tag `ui-v5-2`)
 
 * **Fixed the crashes on saving, on entering a new cell and while rendering, and the character turning invisible**
   (skee64.dll from UBE 2.0, "Using legacy address tables" in the log). On that build, SlaveTatsNG's address for
@@ -12,6 +12,7 @@
   that changes one.
 * Previews wait for a Save / Remove / Load to finish before drawing again (SlaveTats' synchronize runs a frame later).
 * Setup > **Log overlays**: writes what every overlay slot of the target really shows (texture, alpha) to the log.
+* README: a warning section for UBE 2.0 on SE 1.5.97 (its skee64.dll and the legacy address tables).
 
 ## SlavetatsUIPzx UI v5.1 (tag `ui-v5-1`)
 

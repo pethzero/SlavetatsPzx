@@ -120,6 +120,23 @@ when it closes.
   be saved with it (opening and closing the browser again cleans it up).
 * Don't edit tattoos in the SlaveTats MCM and in the browser at the same time; close one before using the other.
 
+### UBE 2.0 on SE 1.5.97 (its own skee64.dll)
+
+* **UBE 2.0 ships its own `skee64.dll`** (RaceMenu's DLL). On SE it is older than the interface SlaveTatsNG wants, so
+  SlaveTatsNG falls back to its legacy address tables; `SlavetatsUIPzx.log` then shows
+  `Using legacy address tables` and `comment from offset table: Skyrim 1.5.97, UBE 2.0 U.0.7`.
+* **With plain SlaveTatsNG, that combination corrupts the game's memory.** The table's address for RaceMenu's
+  `RemoveNodeOverride` writes into the node name it is handed, which damages the game's string pool. It shows as node
+  names turning to garbage in the log (`Cleared vl16]`, `Cleared ` with nothing after it) and then as crashes in
+  unrelated places: on saving, on entering a new cell, while rendering shadows, or a character turning invisible.
+* **This mod (ui-v5-2 and later) avoids it**: on the legacy path `RemoveNodeOverride` is never called (SlaveTats has
+  already blanked the slot by then, so nothing is lost). The log says
+  `legacy RaceMenu: RemoveNodeOverride is skipped` once per session.
+* **If you used an older version** with UBE 2.0, your saves may carry the damage only as junk overrides in RaceMenu's
+  co-save; the corruption itself lived in memory. Load a save from before the crashes started if you can.
+* Any `legacy RaceMenu ... changed` line in the log means another RaceMenu call damaged a string: please report it
+  with the log.
+
 ### Fitting Room (and other mods that edit overlays)
 
 * **Fitting Room's Shape and Overlays features may cause problems** next to this mod on Skyrim SE 1.5.97. Fitting
