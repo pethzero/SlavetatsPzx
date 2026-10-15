@@ -138,12 +138,13 @@ when it closes.
 * [RaceMenu](https://www.nexusmods.com/skyrimspecialedition/mods/19080) (SKEE)
 * [SlaveTatsNG](https://www.loverslab.com/files/file/35989-slavetatsng/)'s scripts and config files (see Installation)
 * SlaveTats tattoo packs (`Data/Textures/Actors/Character/slavetats/*.json`)
-* Optional, for the UIs:
-  * [FLICK](https://www.nexusmods.com/skyrimspecialedition/mods/181603) (FLICK NG on 1.5.97): the Tattoo Browser
-  * [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3): the Mod Control Panel pages
-  * [SmoothCam](https://github.com/mwilsnd/SkyrimSE-SmoothCam): supported, not required
+* [FLICK](https://www.nexusmods.com/skyrimspecialedition/mods/181603) (FLICK NG on 1.5.97): the Tattoo Browser
+* [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3): the Mod Control Panel pages, where the
+  target is chosen, the browser is opened and its hotkey and camera are set
+* Optional: [SmoothCam](https://github.com/mwilsnd/SkyrimSE-SmoothCam), supported, not required
 
-Without FLICK or SKSE Menu Framework the plugin still works, as SlaveTatsNG does.
+Without FLICK and SKSE Menu Framework there is no UI at all: only the SlaveTatsNG part runs (mods that use SlaveTats
+keep working).
 
 ## Installation
 
