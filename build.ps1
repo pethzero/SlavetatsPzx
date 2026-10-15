@@ -8,11 +8,17 @@
     .\build.ps1 -Clean                           # delete the build folder, then rebuild
     .\build.ps1 -OutputDir "D:\MO2\mods\SlavetatsUIPzx"
                                                  # also copy the DLL/PDB + config into a mod folder
+    .\build.ps1 -Online                          # download/update the vcpkg dependencies (git + internet)
+
+    Dependencies live in ..\REF\vcpkg_installed (next to this folder). Once they are there, builds use them as
+    they are and never call git or the network; -Online (or update_deps.bat) installs or updates them. Without
+    that folder the first build is online on its own.
 #>
 param(
     [ValidateSet("release", "debug")]
     [string]$Preset = "release",
     [switch]$Clean,
+    [switch]$Online,
     [string]$OutputDir
 )
 
@@ -88,13 +94,38 @@ if (-not $Clean -and (Test-Path $cache)) {
     }
 }
 
+# ---------------------------------------------------- #
+#        Dependencies: local copy in ..\REF            #
+# ---------------------------------------------------- #
+
+$depsDir = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot "..\REF\vcpkg_installed"))
+$depsCMake = $depsDir -replace '\\', '/'
+$haveDeps = Test-Path (Join-Path $depsDir "x64-windows-skse\share\commonlibsse-ng")
+$install = $Online -or -not $haveDeps
+if ($install) {
+    Write-Host "Installing/updating dependencies into $depsDir (git + internet)..." -ForegroundColor Cyan
+} else {
+    Write-Host "Using local dependencies from $depsDir (offline; build.ps1 -Online to update)" -ForegroundColor Cyan
+}
+
+# A cache that found its packages in another folder (the old per-build vcpkg_installed) keeps those paths
+if (-not $Clean -and (Test-Path $cache)) {
+    $cachedDeps = Select-String -Path $cache -Pattern '^VCPKG_INSTALLED_DIR:[^=]*=(.*)$' | Select-Object -First 1
+    if (-not $cachedDeps -or $cachedDeps.Matches[0].Groups[1].Value.TrimEnd('/') -ne $depsCMake) {
+        # Only the cache goes (the packages are looked up again); the rest of the build folder stays
+        Write-Host "Existing build cache uses other dependencies; reconfiguring." -ForegroundColor Yellow
+        Remove-Item $cache -Force
+    }
+}
+
 if ($Clean -and (Test-Path $buildDir)) {
     Write-Host "Removing $buildDir" -ForegroundColor Yellow
     Remove-Item -Recurse -Force $buildDir
 }
 
 Write-Host "Configuring ($configurePreset)..." -ForegroundColor Cyan
-cmake --preset $configurePreset "-DCMAKE_MAKE_PROGRAM=$($ninja.Source)"
+$manifestInstall = if ($install) { "ON" } else { "OFF" }
+cmake --preset $configurePreset "-DCMAKE_MAKE_PROGRAM=$($ninja.Source)" "-DVCPKG_INSTALLED_DIR=$depsCMake" "-DVCPKG_MANIFEST_INSTALL=$manifestInstall"
 if ($LASTEXITCODE -ne 0) { throw "CMake configure failed." }
 
 Write-Host "Building ($configurePreset)..." -ForegroundColor Cyan

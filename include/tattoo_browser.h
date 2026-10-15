@@ -32,6 +32,11 @@ namespace slavetats_ng
 		bool GetPreviewEnabled();
 		void SetPreviewEnabled(bool a_enabled);
 
+		// Pause world: while the browser is open the world stops (an empty pausing game menu of ours is open, the
+		// pause the inventory uses), the character keeps moving. Takes effect the next time it opens. Saved to the ini.
+		bool GetPauseWorld();
+		void SetPauseWorld(bool a_enabled);
+
 		// Camera while the browser is open (Setup > Camera), like Show Player In Inventory's: offsets in game units
 		// added to the normal third-person camera. X sideways (negative moves the camera left, so the character
 		// stands right of the panel), Y forward/back, Z up/down.

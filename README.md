@@ -29,8 +29,10 @@ changed in each one is in the [CHANGELOG](CHANGELOG.md).
 
 * **Docked to the left edge**, the character standing in the space beside it. The camera moves to the shot set in
   Setup > Camera when the browser opens, so there is nothing to adjust first.
-* **The world keeps running.** No game menu is opened underneath, so nothing can be clicked or equipped by accident,
-  and the game never gets a click while the browser is open.
+* **Pause world** (on by default, Setup checkbox): the world stops while the browser is open, the way it does
+  behind the inventory, and your character keeps moving (idle, hair and cloth physics). The pause comes from an empty
+  menu of ours with nothing to click, so nothing can be equipped by accident, and the game never gets a click while
+  the browser is open. Turn it off to keep the world running.
 * **Slot overview**: Body / Face / Hands / Feet tabs, every overlay slot as a card with its thumbnail (2 x 3 per page).
   Empty slots say *Add*; slots used by other mods are shown as *External - Locked*.
 * **Slot editor**: group chips (with pattern counts), a search box across every group, and a thumbnail grid of the
@@ -111,12 +113,21 @@ when it closes.
 
 ### Gameplay
 
-* **The game is not paused** while the browser is open. You can't move or attack (the browser keeps the input), but
-  the world keeps running, so don't browse with enemies around.
+* **With Pause world off, the game is not paused** while the browser is open. You can't move or attack (the browser
+  keeps the input), but the world keeps running, so don't browse with enemies around.
 * **Preview** applies the hovered or selected pattern to the character for real, just without a SlaveTats record.
   **Don't save the game while previewing**: RaceMenu stores overlays in its own co-save, so a previewed pattern would
   be saved with it (opening and closing the browser again cleans it up).
 * Don't edit tattoos in the SlaveTats MCM and in the browser at the same time; close one before using the other.
+
+### Fitting Room (and other mods that edit overlays)
+
+* **Fitting Room's Shape and Overlays features may cause problems** next to this mod on Skyrim SE 1.5.97. Fitting
+  Room itself reports that RaceMenu's last SE build (0.4.16) is older than the interfaces it needs, and on that
+  RaceMenu SlaveTatsNG also falls back to its legacy address tables ("Using legacy address tables" in
+  `SlavetatsUIPzx.log`). Two mods writing RaceMenu overlays at once through that older RaceMenu is a likely source of
+  glitches or crashes. This is a precaution, not a confirmed bug: in testing nothing crashed. If you see trouble,
+  leave Fitting Room's Shape and Overlays alone while using the Tattoo Browser (or the other way round).
 
 ## Requirements
 
@@ -168,6 +179,7 @@ After installing or removing tattoo packs, press **Add/remove tattoos** on the S
 [Browser]
 iHotkey = 0             ; DirectInput scan code of the browser hotkey, 0 = none (set it in Setup)
 bPreview = true         ; hovering a pattern shows it on the character without saving (Setup checkbox)
+bPauseWorld = true      ; the world stops while browsing, the character keeps moving (Setup checkbox)
 fCameraOffsetX = -72.5  ; camera sideways while browsing: negative moves it left, the character stands right [Offset X]
 fCameraOffsetY = 80     ; camera forward/back                                                           [Offset Y]
 fCameraOffsetZ = -13.5  ; camera up/down                                                                 [Offset Z]
@@ -187,8 +199,9 @@ SlaveTatsNG's own settings stay in `Data/SKSE/Plugins/SlaveTatsNG/SlaveTatsNG.in
 * [vcpkg](https://github.com/microsoft/vcpkg), with `VCPKG_ROOT` set (defaults to `C:\vcpkg`)
 
 CommonLibSSE-NG, DirectXTex and the other dependencies come from the vcpkg manifest (`vcpkg.json`,
-`vcpkg-configuration.json`). The first build downloads and builds them, so it needs a working connection to GitHub and
-GitLab.
+`vcpkg-configuration.json`). The first build downloads and builds them into `..\REF\vcpkg_installed` (next to this
+folder), so it needs a working connection to GitHub and GitLab. After that, builds use that folder as it is and never
+call git or the network; run `update_deps.bat` (or `build.ps1 -Online`) after changing the vcpkg files.
 
 ```
 build.bat                                        # release -> build\release-msvc\SlavetatsUIPzx.dll
@@ -196,7 +209,7 @@ build.bat debug                                  # debug   -> build\debug-msvc
 build.bat release "D:\MO2\mods\SlavetatsUIPzx"   # also copy the DLL/PDB + config into a mod folder
 ```
 
-`build.ps1` takes the same options (`-Preset`, `-Clean`, `-OutputDir`). With `-OutputDir` it also removes an old
+`build.ps1` takes the same options (`-Preset`, `-Clean`, `-OutputDir`, `-Online`). With `-OutputDir` it also removes an old
 `SlavetatsPzx.dll` from the mod folder.
 
 ### Source layout
@@ -222,6 +235,8 @@ Releases are tagged `ui-vMAJOR-MINOR` (`ui-v4-0`, `ui-v4-1`, ...).
 * FLICK by Fuzzles
 * [SKSE Menu Framework](https://github.com/QTR-Modding/SKSE-Menu-Framework-3) by QTR-Modding
 * [SmoothCam](https://github.com/mwilsnd/SkyrimSE-SmoothCam) by mwilsnd, for its modder API (`extern/SmoothCamAPI.h`)
+* Show Player In Menus by derickso (MIT): Pause world follows its
+  approach (the inventory's pause, updating the camera by hand while the game is paused)
 * [Fitting Room](https://www.nexusmods.com/skyrimspecialedition/mods/185342), whose editor inspired the browser's
   layout and whose notes on FLICK's quirks saved a lot of time (no code was copied)
 * [Dear ImGui](https://github.com/ocornut/imgui) (MIT), [DirectXTex](https://github.com/microsoft/DirectXTex) (MIT)

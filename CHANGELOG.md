@@ -1,5 +1,26 @@
 # Changes
 
+## SlavetatsUIPzx UI v5.1 (tag `ui-v5-1`)
+
+* README: a note that Fitting Room's Shape and Overlays may cause problems next to this mod on SE 1.5.97 (both go
+  through RaceMenu 0.4.16's older overlay functions). A precaution: nothing crashed in testing.
+* **Crash while hovering presets.** Each preview redrew every overlay slot one by one (a full overlay update per
+  slot), many times a second while the mouse moved; the crash logs point to memory corrupted under that load.
+  Previews now:
+  * only change the slots whose picture changes, in one overlay update;
+  * wait for the mouse to settle (0.25 s for a whole look) and update at most four times a second, dropping
+    requests that were already replaced;
+  * take SlaveTats' overlay lock like a synchronize does, so the two never overlap.
+* Moving off a preset, or switching tabs, puts back only the slots that differ instead of clearing and redrawing
+  every overlay; the full redraw happens once, when the browser closes.
+* **Pause world** (Setup checkbox, on by default, `bPauseWorld`): the world stops while the browser is open and your
+  character keeps moving, like behind the inventory with Show Player In Inventory. An empty pausing menu of ours is
+  opened under the browser (nothing in it to click). The pause stops the character too, so while paused the
+  browser runs the character's animation itself and updates the camera by hand.
+* The HUD and its "E  Take ..." prompt for whatever the camera points at are hidden while the browser is open: every
+  open game menu except the cursor is faded out (TrueHUD's bars too), and the crosshair is told it points at
+  nothing, so HUD mods' item cards (InfinityUI, moreHUD...) go away too.
+
 ## SlavetatsUIPzx UI v5.0 (tag `ui-v5-0`)
 
 * **Presets**: a new **PRESET** tab in the Tattoo Browser saves a whole look (every SlaveTats tattoo in every area, with

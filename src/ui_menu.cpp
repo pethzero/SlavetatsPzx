@@ -967,6 +967,14 @@ namespace slavetats_ng
 					ImGuiMCP::SetTooltip("In the browser, hovering a pattern shows it on the character right away, like trying on clothes.\nNothing is saved until you press Save/Replace; Undo, leaving the slot or closing the browser takes it back off.");
 				ImGuiMCP::SameLine();
 				ImGuiMCP::TextDisabled("%s", "Show patterns on the character while browsing, without saving");
+
+				bool pause = tattoo_browser::GetPauseWorld();
+				if (ImGuiMCP::Checkbox("Pause world", &pause))
+					tattoo_browser::SetPauseWorld(pause);
+				if (ImGuiMCP::IsItemHovered())
+					ImGuiMCP::SetTooltip("While the browser is open the world stops (like behind the inventory) and your character keeps moving.\nOff: the world keeps running. Takes effect the next time the browser opens.");
+				ImGuiMCP::SameLine();
+				ImGuiMCP::TextDisabled("%s", "Stop the world while browsing; your character keeps moving");
 				// ---- Camera (the browser's framing) ----
 				ImGuiMCP::SeparatorText("Camera");
 				auto cam = tattoo_browser::GetCameraSettings();

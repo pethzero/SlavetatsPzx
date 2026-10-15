@@ -167,7 +167,12 @@ namespace slavetats_ng
 		// A whole look (a preset) on the target, in the slots ApplyLook would put it in, without touching the records.
 		// Slots the look doesn't use are shown empty; locked slots and other mods' overlays are left alone. UI thread.
 		void PreviewLook(const std::vector<LookTattoo>& a_look);
+		// While previewing: shows what is saved again, slot by slot (cheaper than EndPreview's full synchronize)
+		void PreviewSaved();
 		void EndPreview();                          // any thread; no-op when nothing is previewed
+		// UI thread: EndPreview without the full synchronize, only the slots the preview changed are redrawn
+		// (falls back to EndPreview when a saved tattoo's pack isn't in the catalog)
+		void EndPreviewQuick();
 		bool IsPreviewing();
 	}
 }

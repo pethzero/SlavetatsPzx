@@ -48,6 +48,8 @@ namespace slavetats_ng
 			float CameraRotation = CameraSettings{}.rotation;  // degrees around the character, 0 = in front
 			float CameraPitch = CameraSettings{}.pitch;        // degrees of tilt, positive looks down from above
 			bool                       PreviewMode = true;   // clicking a pattern shows it on the character without saving
+			bool                       PauseWorldSetting = true;  // Setup > Pause world (takes effect when the browser opens)
+			bool                       PauseRegistered = false;   // our pausing menu is known to the UI (kDataLoaded)
 			bool                       Available = false;
 
 			void LoadSettings()
@@ -67,6 +69,7 @@ namespace slavetats_ng
 					CameraFOV = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraFOV", CameraFOV));
 					CameraRotation = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraRotation", CameraRotation));
 					CameraPitch = static_cast<float>(ini.GetDoubleValue("Browser", "fCameraPitch", CameraPitch));
+					PauseWorldSetting = ini.GetBoolValue("Browser", "bPauseWorld", PauseWorldSetting);
 				}
 				logger::info("Tattoo Browser: hotkey {:#x}, camera offset ({}, {}, {}), zoom {}, fov {}", Hotkey.load(), OffsetX, OffsetY, OffsetZ, OpenZoom, CameraFOV);
 			}
@@ -89,6 +92,8 @@ namespace slavetats_ng
 				ini.SetDoubleValue("Browser", "fCameraFOV", CameraFOV, "; Field of view while browsing, 0 = keep the game's");
 				ini.SetDoubleValue("Browser", "fCameraRotation", CameraRotation, "; Degrees the camera sits around the character: 0 = in front, 180 = behind");
 				ini.SetDoubleValue("Browser", "fCameraPitch", CameraPitch, "; Degrees the camera tilts: positive looks down from above, negative from below");
+				ini.SetBoolValue("Browser", "bPauseWorld", PauseWorldSetting,
+					"; The world stops while the browser is open; the character keeps moving (Setup > Pause world)");
 				ini.SetBoolValue("Browser", "bPreview", PreviewMode,
 					"; Clicking a pattern shows it on the character right away, without saving (Save/Replace keeps it)");
 				if (ini.SaveFile(kSettingsFile) < 0)
@@ -346,7 +351,9 @@ namespace slavetats_ng
 					// turntable, so the game never sees a click (no attacks, no walking, no hidden menu to hit).
 					// No pause/blur flags: the world keeps running. kNoDecoration: a decorated FLICK window is kept
 					// away from the screen edge; we draw our own header instead.
-					return F::kNoMove | F::kNoResize | F::kNoDecoration | F::kCustomPosition | F::kCloseOnEsc | F::kCloseOnGameMenu |
+					// kCloseOnGameMenu would hide us behind our own pausing menu (Pause world)
+					auto menu = PauseWorldSetting && PauseRegistered ? F::kNone : F::kCloseOnGameMenu;
+					return F::kNoMove | F::kNoResize | F::kNoDecoration | F::kCustomPosition | F::kCloseOnEsc | menu |
 					       F::kBlockVanity | F::kHideHUD;
 				}
 
@@ -397,7 +404,7 @@ namespace slavetats_ng
 				bool DrawPresetTile(int a_slot, ImVec2 a_pos, ImVec2 a_size);
 				void DrawPresetDetails(const tattoo_presets::PresetFile& a_file, float a_height);
 				void UpdatePreview();
-				bool Settled(const string& a_key);
+				bool Settled(const string& a_key, double a_delay = 0.12);
 				void StopPreview();
 
 				std::atomic<bool> open_ = false;
@@ -431,6 +438,169 @@ namespace slavetats_ng
 			};
 
 			BrowserWindow Window;
+
+			// ------------------------------ World pause (game thread) -------------------------------------------
+			// Setup > Pause world: an empty game menu of ours with kPausesGame stays open while the browser is. The
+			// world stops the way it does behind the inventory - which is what Show Player In Inventory (derickso,
+			// MIT) shows the character in - and the character keeps its idle. The menu has no movie and takes no
+			// input: FLICK keeps drawing the browser and handling the mouse. While paused the engine doesn't move
+			// the camera, so the turntable updates it itself (as Show Player In Inventory does).
+
+			class PauseMenu : public RE::IMenu
+			{
+			public:
+				static constexpr const char* MENU_NAME = "SlavetatsUIPzxPause";
+
+				PauseMenu()
+				{
+					menuFlags.set(RE::UI_MENU_FLAGS::kPausesGame);
+					inputContext = Context::kNone;
+					depthPriority = 0;
+				}
+
+				static RE::IMenu* Create() { return new PauseMenu(); }
+
+				// Nothing to show or advance: there is no movie
+				RE::UI_MESSAGE_RESULTS ProcessMessage(RE::UIMessage&) override { return RE::UI_MESSAGE_RESULTS::kHandled; }
+				void                   AdvanceMovie(float, std::uint32_t) override {}
+				void                   PostDisplay() override {}
+			};
+
+			std::atomic<bool> PauseActive = false;  // our menu is (being) opened; read by the turntable each frame
+
+			// The pause stops the character's animation with the world. While paused the turntable runs it itself, one
+			// real-time step a frame, and pushes the bones to the 3D, so the character keeps its idle.
+			std::chrono::steady_clock::time_point LastAnimation;  // game thread
+
+			void AnimateWhilePaused(RE::PlayerCharacter* a_player)
+			{
+				auto  now = std::chrono::steady_clock::now();
+				float delta = std::chrono::duration<float>(now - LastAnimation).count();
+				LastAnimation = now;
+				delta = std::clamp(delta, 0.0f, 0.1f);  // a hitch (or the first frame) must not jump the animation
+				if (delta <= 0.0f)
+					return;
+				a_player->UpdateAnimation(delta);
+				if (auto root = a_player->Get3D(false)) {
+					RE::NiUpdateData data{};
+					root->Update(data);
+				}
+			}
+
+			// The HUD's crosshair still shows "E  Take ..." for whatever the camera points at, and other overlay menus
+			// (TrueHUD's bars...) stay up: every open game menu is faded out while the browser is open, except the
+			// cursor (the browser needs it) and a few the engine owns. Their movie's root alpha, not a hide: the menus
+			// stay on the stack, so mods hooked onto them keep working. Re-asserted every frame (the engine may show
+			// the HUD again when our pausing menu opens). ("tm" would hide them too, but it takes the cursor with it.)
+			struct FadedMenu
+			{
+				string name;
+				double alpha;  // root alpha before we faded it (AS2 _alpha, 0..100)
+			};
+			std::vector<FadedMenu> Faded;  // game thread
+			bool                   HudHidden = false;
+
+			bool KeepMenu(std::string_view a_name)
+			{
+				for (auto keep : { "Cursor Menu", "Console", "Fader Menu", "Loading Menu", "Main Menu", "Mist Menu", PauseMenu::MENU_NAME })
+					if (a_name == keep)
+						return true;
+				return false;
+			}
+
+			void SetMenuAlpha(const string& a_name, double a_alpha)
+			{
+				auto ui = RE::UI::GetSingleton();
+				if (auto menu = ui ? ui->GetMenu(a_name) : RE::GPtr<RE::IMenu>(); menu && menu->uiMovie)
+					menu->uiMovie->SetVariable("_root._alpha", RE::GFxValue(a_alpha));
+			}
+
+			void HideHud(bool a_hide)
+			{
+				auto ui = RE::UI::GetSingleton();
+				if (!ui)
+					return;
+				if (a_hide) {
+					if (!HudHidden) {
+						Faded.clear();
+						for (auto& [name, entry] : ui->menuMap) {
+							if (!entry.menu || !entry.menu->uiMovie || KeepMenu(name.c_str()))
+								continue;
+							RE::GFxValue alpha;
+							double       before = entry.menu->uiMovie->GetVariable(&alpha, "_root._alpha") && alpha.IsNumber() ? alpha.GetNumber() : 100.0;
+							Faded.push_back({ string(name.c_str()), before > 0.0 ? before : 100.0 });
+						}
+						HudHidden = true;
+					}
+					for (auto& menu : Faded)
+						SetMenuAlpha(menu.name, 0.0);
+				} else if (HudHidden) {
+					for (auto& menu : Faded)
+						SetMenuAlpha(menu.name, menu.alpha);
+					Faded.clear();
+					HudHidden = false;
+				}
+			}
+
+			// Item cards from HUD mods (InfinityUI, moreHUD...) follow SKSE's crosshair event and hide themselves behind
+			// the menus they know (the inventory), not behind ours. So the browser tells everyone the crosshair points
+			// at nothing, and clears the engine's pick so it isn't put back. Re-asserted every frame: with the world
+			// running the engine picks again. On close the old target is announced again so the cards come back.
+			bool                CrosshairCleared = false;  // game thread
+			RE::ObjectRefHandle CrosshairBefore;
+
+			void ClearCrosshair(bool a_clear)
+			{
+				auto pick = RE::CrosshairPickData::GetSingleton();
+				auto source = SKSE::GetCrosshairRefEventSource();
+				if (a_clear) {
+					if (!CrosshairCleared) {
+						CrosshairBefore = pick ? pick->target : RE::ObjectRefHandle();
+						CrosshairCleared = true;
+					} else if (!pick || !pick->target) {
+						return;  // still nothing under it
+					}
+					if (pick) {
+						pick->target.reset();
+						pick->targetActor.reset();
+					}
+					if (source) {
+						SKSE::CrosshairRefEvent event{};
+						source->SendEvent(&event);
+					}
+				} else if (CrosshairCleared) {
+					CrosshairCleared = false;
+					if (auto ref = CrosshairBefore.get(); ref && source) {
+						SKSE::CrosshairRefEvent event{ ref };
+						source->SendEvent(&event);
+					}
+					CrosshairBefore.reset();
+				}
+			}
+
+			// Which menus are open when the browser opens: the log answers "whose overlay is that"
+			void LogOpenMenus()
+			{
+				auto ui = RE::UI::GetSingleton();
+				if (!ui)
+					return;
+				string names;
+				for (auto& [name, entry] : ui->menuMap) {
+					if (entry.menu)
+						names += (names.empty() ? "" : ", ") + string(name.c_str());
+				}
+				logger::info("Tattoo Browser: open menus: {}", names);
+			}
+
+			void PauseWorld(bool a_pause)
+			{
+				auto queue = RE::UIMessageQueue::GetSingleton();
+				if (!queue || !PauseRegistered || PauseActive == a_pause)
+					return;
+				PauseActive = a_pause;
+				LastAnimation = std::chrono::steady_clock::now();
+				queue->AddMessage(PauseMenu::MENU_NAME, a_pause ? RE::UI_MESSAGE_TYPE::kShow : RE::UI_MESSAGE_TYPE::kHide, nullptr);
+			}
 
 			// ------------------------------ Character turntable (game thread) ------------------------------------
 			// No game menu under the browser. FLICK keeps the input while we are open (no walking, no attacks), and
@@ -499,6 +669,10 @@ namespace slavetats_ng
 			{
 				if (!TurntableHeld)
 					return;
+				if (HudHidden)
+					HideHud(true);  // keep it faded: the HUD may come back when menus open or close
+				if (CrosshairCleared)
+					ClearCrosshair(true);
 				auto player = RE::PlayerCharacter::GetSingleton();
 				auto state = ThirdPerson();  // null for a frame or two after ForceThirdPerson
 				if (!player || !state)
@@ -531,6 +705,16 @@ namespace slavetats_ng
 				}
 				float zoomStart = OpenZoom >= 0.0f ? OpenZoom : Saved.zoom;
 				state->targetZoomOffset = std::clamp(zoomStart + ZoomDelta.load(std::memory_order_relaxed), 0.0f, 1.0f);
+
+				if (PauseActive) {
+					// Paused: nothing eases the camera to these values or moves the character's 3D, so do it here
+					state->posOffsetActual = state->posOffsetExpected;
+					state->currentZoomOffset = state->targetZoomOffset;
+					player->Update3DPosition(false);
+					AnimateWhilePaused(player);
+					if (auto camera = RE::PlayerCamera::GetSingleton())
+						camera->Update();
+				}
 			}
 
 			// ------------------------------ SmoothCam ------------------------------------------------------------
@@ -575,15 +759,23 @@ namespace slavetats_ng
 					camera->ForceThirdPerson();
 				}
 				Recenter();
+				if (PauseWorldSetting)
+					PauseWorld(true);
+				HideHud(true);
+				ClearCrosshair(true);
+				LogOpenMenus();
 				TurntableHeld = true;
 				ApplyTurntable();
-				FUCK::ForceCursor(true);  // no game menu is open, so nothing else shows a cursor
+				FUCK::ForceCursor(true);  // our pausing menu (if any) shows no cursor of its own
 				logger::info("Tattoo Browser: opened");
 			}
 
 			void BrowserWindow::OnClosedGame()
 			{
 				TurntableHeld = false;
+				PauseWorld(false);  // first: the camera and the character are put back with the world running
+				HideHud(false);
+				ClearCrosshair(false);
 				EndPreview();  // whatever was only previewed goes back to what is saved
 				if (Saved.valid) {
 					if (auto player = RE::PlayerCharacter::GetSingleton())
@@ -741,7 +933,6 @@ namespace slavetats_ng
 						FUCK::SameLine(0.0f, a == kPresetTab ? 18.0f : 6.0f);  // set a little apart: it isn't a body area
 					FUCK::PushID(a);
 					if (Chip(kTabs[a], area_ == a) && area_ != a) {
-						EndPreview();
 						StopPreview();
 						area_ = a;
 						page_ = 0;
@@ -1413,7 +1604,7 @@ namespace slavetats_ng
 				if (!any)
 					FUCK::Dummy(ImVec2(1.0f, frame));
 
-				if (IsPreviewing())
+				if (IsPreviewing() && previewKey_.starts_with("look|"))
 					FUCK::TextColored(kPending, "%s", "Previewing the preset under the mouse - Load puts it on for real.");
 				// Result of the last action: the first line, the rest on hover
 				else if (!Message.empty()) {
@@ -1497,7 +1688,7 @@ namespace slavetats_ng
 			// Puts the records back on the character and forgets what was shown
 			void BrowserWindow::StopPreview()
 			{
-				EndPreview();
+				EndPreviewQuick();  // closing the browser still synchronizes everything (OnClosedGame)
 				previewKey_.clear();
 				pendingKey_.clear();
 			}
@@ -1505,7 +1696,7 @@ namespace slavetats_ng
 			// True once a_key (what should be on the character) has held still for a moment and differs from what is
 			// shown: previewKey_ becomes a_key and the caller draws it. Sweeping the mouse across the grid shouldn't
 			// redraw the character for every tile it passes.
-			bool BrowserWindow::Settled(const string& a_key)
+			bool BrowserWindow::Settled(const string& a_key, double a_delay)
 			{
 				if (a_key == previewKey_) {
 					pendingKey_ = a_key;
@@ -1517,7 +1708,7 @@ namespace slavetats_ng
 					pendingSince_ = now;
 					return false;
 				}
-				if (now - pendingSince_ < 0.12)
+				if (now - pendingSince_ < a_delay)
 					return false;
 				previewKey_ = a_key;
 				return true;
@@ -1540,10 +1731,11 @@ namespace slavetats_ng
 							StopPreview();
 						return;
 					}
-					if (!Settled(look_key.empty() ? "" : "look|" + look_key))
+					// A whole look swaps many textures: wait a little longer before drawing one
+					if (!Settled(look_key.empty() ? "" : "look|" + look_key, 0.25))
 						return;
 					if (look_key.empty())
-						EndPreview();
+						PreviewSaved();  // only the slots that differ go back; leaving the tab synchronizes
 					else
 						PreviewLook(hoverLook_);
 					return;
@@ -1571,7 +1763,7 @@ namespace slavetats_ng
 				if (want)
 					PreviewSlot(area_, editing_, want);
 				else
-					EndPreview();
+					EndPreviewQuick();
 			}
 
 			// ------------------------------ Hotkey (game thread) -------------------------------------------------
@@ -1637,6 +1829,10 @@ namespace slavetats_ng
 				return;
 			if (auto input = RE::BSInputDeviceManager::GetSingleton())
 				input->AddEventSink(&Sink);
+			if (auto ui = RE::UI::GetSingleton()) {
+				ui->Register(PauseMenu::MENU_NAME, PauseMenu::Create);
+				PauseRegistered = true;
+			}
 		}
 
 		bool IsAvailable() { return Available; }
@@ -1654,6 +1850,14 @@ namespace slavetats_ng
 		}
 
 		bool GetPreviewEnabled() { return PreviewMode; }
+
+		bool GetPauseWorld() { return PauseWorldSetting; }
+
+		void SetPauseWorld(bool a_enabled)
+		{
+			PauseWorldSetting = a_enabled;
+			WriteIni();
+		}
 
 		void SetPreviewEnabled(bool a_enabled)
 		{

@@ -17,3 +17,6 @@ vcpkg_installed
 
 # Compiled Papyrus
 papyrus/Scripts/*.pex
+
+# Local backups of the build scripts
+*_bk1.*

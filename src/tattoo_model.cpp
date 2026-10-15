@@ -4,6 +4,7 @@
 #include "cache.h"
 #include "tattoo.h"
 #include "overlays.h"
+#include "ni_node_override_lock.h"
 #include "tattoo_model.h"
 
 using namespace slavetats_ng::jcwrapper;
@@ -41,7 +42,6 @@ namespace slavetats_ng
 		string                                    Status;
 
 		std::atomic<bool> Previewing = false;  // an overlay on the target differs from the records
-		std::set<std::pair<int, int>> LookShown;  // (area, slot) the last PreviewLook drew a tattoo in
 
 		std::mutex                         QueueLock;
 		std::vector<std::function<void()>> Queue;
@@ -248,6 +248,170 @@ namespace slavetats_ng
 			return {};
 		}
 
+		// ------------------------------ Preview painter (game thread) ------------------------------------------
+		// Previews draw straight on the overlays, without records. Every request lists slots with what to show and
+		// what the records show there. Hovering can ask many times a second, and each overlay update swaps
+		// textures the engine loads on its job threads, so:
+		//   - only the newest request waits (older ones are dropped), painted at most every kPaintGap;
+		//   - only slots whose picture changes are touched, as one batch with a single ApplyNodeOverrides;
+		//   - under SlaveTats' overlay lock, like synchronize_tattoos, so the two never interleave.
+		// Paths are relative to the slavetats texture folder; the game-thread side adds PREFIX(), so no game string
+		// is made on the render thread.
+
+		struct SlotPaint
+		{
+			int    area = 0;
+			int    slot = 0;
+			string texture;  // empty = cleared
+			int    color = 0;
+			int    glow = 0;
+			bool   gloss = false;
+			string record;   // PaintKey of what the records draw here ("?" = unknown: always repaint)
+		};
+
+		constexpr auto kPaintGap = std::chrono::milliseconds(250);
+
+		std::mutex                            PaintMutex;
+		std::optional<std::vector<SlotPaint>> PendingPaint;  // newest request not painted yet
+		bool                                  PendingRestore = false;
+		bool                                  PaintQueued = false;
+		RE::FormID                            PaintTarget = 0;
+
+		// Game thread only
+		std::map<std::pair<int, int>, string> Shown;  // what a preview put in a slot; missing = what the records show
+		RE::FormID                            ShownTarget = 0;
+		std::chrono::steady_clock::time_point LastPaint;
+
+		string PaintKey(const string& a_texture, int a_color, int a_glow, bool a_gloss)
+		{
+			return a_texture.empty() ? string() : fmt::format("{}|{:06x}|{:06x}|{}", a_texture, a_color, a_glow, a_gloss);
+		}
+
+		void RunPaint();
+
+		void SchedulePaintLocked()
+		{
+			if (!PaintQueued) {
+				PaintQueued = true;
+				SKSE::GetTaskInterface()->AddTask(RunPaint);
+			}
+		}
+
+		void RunPaint()
+		{
+			using clock = std::chrono::steady_clock;
+			std::optional<std::vector<SlotPaint>> paint;
+			bool                                  restore = false;
+			RE::FormID                            id = 0;
+			{
+				std::lock_guard guard(PaintMutex);
+				if (!PendingRestore && clock::now() - LastPaint < kPaintGap) {
+					SKSE::GetTaskInterface()->AddTask(RunPaint);  // too soon after the last update: look again next frame
+					return;
+				}
+				restore = std::exchange(PendingRestore, false);
+				if (!restore) {
+					paint = std::move(PendingPaint);
+					PendingPaint.reset();
+				}
+				PaintQueued = restore && PendingPaint.has_value();
+				id = PaintTarget;
+			}
+			if (restore) {
+				// Forced synchronize: applied slots are drawn again from the records, empty ones are cleared. It may
+				// run as its own task, so a waiting paint goes after it (queued below, behind that task).
+				if (auto actor = GetActor(id)) {
+					JFormDB::setInt(actor, ".SlaveTats.updated", 1);
+					synchronize_tattoos(actor, true);
+				}
+				Shown.clear();
+				LastPaint = clock::now();
+				std::lock_guard guard(PaintMutex);
+				if (PaintQueued)
+					SKSE::GetTaskInterface()->AddTask(RunPaint);
+				return;
+			}
+			if (!paint)
+				return;
+
+			if (id != ShownTarget) {
+				Shown.clear();
+				ShownTarget = id;
+			}
+			auto actor = GetActor(id);
+			if (!actor || !actor->Is3DLoaded()) {
+				Shown.clear();
+				return;
+			}
+			if (ni_node_override_lock::lock(actor)) {
+				// A synchronize holds the overlays: try again next frame (unless a newer request came in)
+				std::lock_guard guard(PaintMutex);
+				if (!PendingPaint && !PendingRestore)
+					PendingPaint = std::move(paint);
+				SchedulePaintLocked();
+				return;
+			}
+			auto unlock = gsl::finally([actor] { ni_node_override_lock::unlock(actor); });
+
+			auto   base = actor->GetActorBase();
+			bool   female = base && base->GetSex() == RE::SEX::kFemale;
+			string prefix = PREFIX().c_str();
+			bool   changed = false;
+			for (auto& p : *paint) {
+				string key = PaintKey(p.texture, p.color, p.glow, p.gloss);
+				auto   it = Shown.find({ p.area, p.slot });
+				if (key == (it != Shown.end() ? it->second : p.record))
+					continue;
+				if (p.texture.empty()) {
+					clear_overlay_part1(actor, female, kAreas[p.area], p.slot);
+				} else {
+					float gloss = p.gloss ? 5.0f : 0.0f;  // what apply_overlay uses for the boolean gloss
+					string path = prefix + p.texture;
+					apply_overlay_ex_deferred(actor, female, kAreas[p.area], p.slot, path.c_str(), p.color, p.glow, gloss, "", 1.0f, gloss, "", 1.0f);
+				}
+				Shown[{ p.area, p.slot }] = std::move(key);
+				changed = true;
+			}
+			if (changed) {
+				skee_wrapper::NiOverride::ApplyNodeOverrides(actor);
+				LastPaint = clock::now();
+			}
+		}
+
+		// UI thread (or any thread for a restore)
+		void QueuePaint(std::vector<SlotPaint> a_paint, bool a_restore)
+		{
+			std::lock_guard guard(PaintMutex);
+			PaintTarget = TargetID;
+			if (a_restore) {
+				PendingRestore = true;
+				PendingPaint.reset();
+			} else {
+				PendingPaint = std::move(a_paint);
+			}
+			SchedulePaintLocked();
+		}
+
+		// Saving, removing or loading synchronizes on its own: nothing previewed may land after it
+		void CancelPaint()
+		{
+			std::lock_guard guard(PaintMutex);
+			PendingPaint.reset();
+			PendingRestore = false;
+		}
+
+		// What the records draw in a slot, as a PaintKey. UI thread.
+		string RecordKey(int a_area, int a_slot)
+		{
+			auto& applied = Slots[a_area][a_slot].applied;
+			if (applied.kind != SlotKind::kTattoo)
+				return {};
+			auto def = FindTattoo(a_area, applied.section, applied.name);
+			if (!def || def->texture.empty())
+				return "?";
+			return PaintKey(def->texture, applied.color, applied.glow, applied.glossy);
+		}
+
 		// ------------------------------ UI thread ------------------------------------------------------------
 
 		const TattooDef* Selected(int a_area, const Slot& a_slot)
@@ -367,10 +531,10 @@ namespace slavetats_ng
 		{
 			auto& slot = Slots[a_area][a_index];
 			auto  tattoo = Selected(a_area, slot);
-			if (tattoo)
-				Previewing = false;  // the synchronize below redraws every slot from the records
 			if (!tattoo)
 				return;
+			Previewing = false;  // the synchronize below redraws every slot from the records
+			CancelPaint();
 
 			bool same = slot.applied.kind == SlotKind::kTattoo && IEquals(slot.applied.section, slot.section) && IEquals(slot.applied.name, slot.pattern);
 
@@ -391,6 +555,7 @@ namespace slavetats_ng
 					return [] { Status = "The target is not available anymore."; };
 
 				auto error = ApplyTattoo(actor, req);
+				Shown.clear();
 				auto states = ReadSlots(actor, req.area);
 				return [req, error, states = std::move(states)]() mutable {
 					SetSlots(req.area, std::move(states), req.slot);
@@ -403,12 +568,12 @@ namespace slavetats_ng
 		void RemoveSlot(int a_area, int a_index)
 		{
 			auto& slot = Slots[a_area][a_index];
-			if (!slot.applied.locked)
-				Previewing = false;  // the synchronize below redraws every slot from the records
 			if (slot.applied.locked) {
 				slot.error = "The tattoo resists all of your efforts to remove it.";
 				return;
 			}
+			Previewing = false;  // the synchronize below redraws every slot from the records
+			CancelPaint();
 
 			slot.error.clear();
 			RunOnGameThread([id = TargetID, a_area, a_index]() -> std::function<void()> {
@@ -417,6 +582,7 @@ namespace slavetats_ng
 					return [] { Status = "The target is not available anymore."; };
 
 				auto error = RemoveTattoo(actor, a_area, a_index);
+				Shown.clear();
 				auto states = ReadSlots(actor, a_area);
 				return [a_area, a_index, error, states = std::move(states)]() mutable {
 					SetSlots(a_area, std::move(states), a_index);
@@ -444,6 +610,7 @@ namespace slavetats_ng
 		void ApplyLook(std::vector<LookTattoo> a_look, std::function<void(int, std::vector<string>)> a_done)
 		{
 			Previewing = false;  // the synchronize below redraws every slot from the records
+			CancelPaint();
 			Status.clear();
 			RunOnGameThread([id = TargetID, look = std::move(a_look), done = std::move(a_done)]() mutable -> std::function<void()> {
 				auto actor = GetActor(id);
@@ -520,6 +687,7 @@ namespace slavetats_ng
 
 				JFormDB::setInt(actor, ".SlaveTats.updated", 1);
 				synchronize_tattoos(actor, true);
+				Shown.clear();
 
 				std::array<std::vector<SlotState>, kAreaCount> states;
 				for (int a = 0; a < kAreaCount; a++)
@@ -548,21 +716,9 @@ namespace slavetats_ng
 			if (!tattoo || tattoo->texture.empty())
 				return;
 
-			string path = string(PREFIX().c_str()) + tattoo->texture;
-			int    color = ToRGB(slot.ink);
-			int    glow = ToRGB(slot.glow);
-			bool   gloss = slot.glossy;
-			Previewing = true;
-
 			// Straight to the overlay, the way synchronize_tattoos draws an applied entry, but no record is made
-			SKSE::GetTaskInterface()->AddTask([id = TargetID, a_area, a_index, path, color, glow, gloss] {
-				auto actor = GetActor(id);
-				if (!actor)
-					return;
-				auto base = actor->GetActorBase();
-				bool female = base && base->GetSex() == RE::SEX::kFemale;
-				apply_overlay(actor, female, kAreas[a_area], a_index, path.c_str(), color, glow, gloss, "", 1.0f);
-			});
+			Previewing = true;
+			QueuePaint({ { a_area, a_index, tattoo->texture, ToRGB(slot.ink), ToRGB(slot.glow), slot.glossy, RecordKey(a_area, a_index) } }, false);
 		}
 
 		void PreviewLook(const std::vector<LookTattoo>& a_look)
@@ -572,20 +728,7 @@ namespace slavetats_ng
 					return;
 			}
 
-			// What each slot shows: path empty = cleared
-			struct Paint
-			{
-				int    area;
-				int    slot;
-				string path;
-				int    color = 0;
-				int    glow = 0;
-				bool   gloss = false;
-			};
-			std::vector<Paint>            paint;
-			std::set<std::pair<int, int>> shown;
-			string                        prefix = PREFIX().c_str();
-
+			std::vector<SlotPaint> paint;
 			for (int a = 0; a < kAreaCount; a++) {
 				auto& slots = Slots[a];
 				int   n = static_cast<int>(slots.size());
@@ -615,47 +758,74 @@ namespace slavetats_ng
 						}
 					}
 				}
-				// Clearing is an overlay update too: only where something shows (saved, or the last preview's)
+				// Every free slot: the painter only touches the ones whose picture changes
 				for (int i = 0; i < n; i++) {
 					if (!usable[i])
 						continue;
-					if (auto t = at[i]) {
-						paint.push_back({ a, i, prefix + FindTattoo(a, t->section, t->name)->texture, t->color, t->glow, t->glossy });
-						shown.insert({ a, i });
-					} else if (slots[i].applied.kind == SlotKind::kTattoo || LookShown.contains({ a, i })) {
-						paint.push_back({ a, i, {} });
+					if (auto t = at[i])
+						paint.push_back({ a, i, FindTattoo(a, t->section, t->name)->texture, t->color, t->glow, t->glossy, RecordKey(a, i) });
+					else
+						paint.push_back({ a, i, {}, 0, 0, false, RecordKey(a, i) });
+				}
+			}
+
+			Previewing = true;
+			QueuePaint(std::move(paint), false);
+		}
+
+		// What the records draw, slot by slot, as a paint. False when a saved tattoo's pack isn't in the catalog: only
+		// a synchronize can redraw that one. UI thread.
+		bool SavedPaint(std::vector<SlotPaint>& a_paint)
+		{
+			for (int a = 0; a < kAreaCount; a++) {
+				for (int i = 0; i < static_cast<int>(Slots[a].size()); i++) {
+					auto& applied = Slots[a][i].applied;
+					if (applied.kind == SlotKind::kExternal || applied.locked)
+						continue;
+					string record = RecordKey(a, i);
+					if (record == "?")
+						return false;
+					if (record.empty()) {
+						a_paint.push_back({ a, i, {}, 0, 0, false, {} });
+					} else {
+						auto def = FindTattoo(a, applied.section, applied.name);
+						a_paint.push_back({ a, i, def->texture, applied.color, applied.glow, applied.glossy, record });
 					}
 				}
 			}
-			LookShown = std::move(shown);
+			return true;
+		}
 
-			Previewing = true;
-			SKSE::GetTaskInterface()->AddTask([id = TargetID, paint = std::move(paint)] {
-				auto actor = GetActor(id);
-				if (!actor)
-					return;
-				auto base = actor->GetActorBase();
-				bool female = base && base->GetSex() == RE::SEX::kFemale;
-				for (auto& p : paint) {
-					if (p.path.empty())
-						clear_overlay(actor, female, kAreas[p.area], p.slot);
-					else
-						apply_overlay(actor, female, kAreas[p.area], p.slot, p.path.c_str(), p.color, p.glow, p.gloss, "", 1.0f);
-				}
-			});
+		void PreviewSaved()
+		{
+			if (!Previewing)
+				return;
+			std::vector<SlotPaint> paint;
+			if (SavedPaint(paint))
+				QueuePaint(std::move(paint), false);
+			else
+				EndPreview();
+		}
+
+		void EndPreviewQuick()
+		{
+			if (!Previewing)
+				return;
+			std::vector<SlotPaint> paint;
+			if (!SavedPaint(paint)) {
+				EndPreview();
+				return;
+			}
+			// Only the slots the preview changed are drawn again; nothing is cleared and re-applied wholesale
+			Previewing = false;
+			QueuePaint(std::move(paint), false);
 		}
 
 		void EndPreview()
 		{
 			if (!Previewing.exchange(false))
 				return;
-			// Forced synchronize: applied slots are drawn again from the records, empty ones are cleared
-			SKSE::GetTaskInterface()->AddTask([id = TargetID] {
-				if (auto actor = GetActor(id)) {
-					JFormDB::setInt(actor, ".SlaveTats.updated", 1);
-					synchronize_tattoos(actor, true);
-				}
-			});
+			QueuePaint({}, true);
 		}
 
 		// ------------------------------ Shared helpers -------------------------------------------------------
